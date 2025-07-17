@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Lightmap</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson@3"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      transition: background-color 0.3s, color 0.3s;
+      overflow: hidden;
+    }
+
+    :root {
+      --bg: #ffffff;
+      --text: #000000;
+      --button-bg: #f0f0f0;
+      --land: #ffffff;
+      --sea: #ffffff;
+      --border: #cccccc;
+      --modal-bg: #ffffff;
+      --modal-shadow: rgba(0, 0, 0, 0.1);
+    }
+
+    [data-theme="dark"] {
+      --bg: #121212;
+      --text: #ffffff;
+      --button-bg: #333333;
+      --land: #000000;
+      --sea: #000000;
+      --border: #444444;
+      --modal-bg: #2c2c2c;
+      --modal-shadow: rgba(0, 0, 0, 0.5);
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .buttons {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 8px;
+      background-color: var(--button-bg);
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.3s, transform 0.2s;
+      font-weight: 500;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    button:hover {
+        transform: translateY(-2px);
+    }
+    
+    button:disabled {
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+
+    #toggleTheme {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 10;
+    }
+    
+    #aboutButton {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+        background-color: var(--button-bg);
+        color: var(--text);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+    }
+
+    /* Modal styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.6);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s, visibility 0.3s;
+    }
+    .modal-overlay.visible {
+        opacity: 1;
+        visibility: visible;
+    }
+    .modal-content {
+        background-color: var(--modal-bg);
+        color: var(--text);
+        padding: 25px 30px;
+        border-radius: 12px;
+        box-shadow: 0 5px 15px var(--modal-shadow);
+        text-align: center;
+        max-width: 90%;
+        width: 350px;
+    }
+    .modal-content h3 {
+        margin-top: 0;
+    }
+    .modal-content p {
+        margin: 0 0 20px 0;
+        line-height: 1.6;
+    }
+    .modal-content button {
+        padding: 10px 25px;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="buttons">
+    <button id="msg-0" style="background-color: #e6194b; color: white;">I love you</button>
+    <button id="msg-1" style="background-color: #3cb44b; color: white;">Thank you</button>
+    <button id="msg-2" style="background-color: #4363d8; color: white;">I forgive you</button>
+    <button id="msg-3" style="background-color: #911eb4; color: white;">Please forgive me</button>
+  </div>
+  <button id="toggleTheme">Dark mode</button>
+  <button id="aboutButton">?</button>
+  <svg id="map"></svg>
+
+  <div id="modal" class="modal-overlay">
+      <div class="modal-content">
+          <h3 id="modalTitle"></h3>
+          <p id="modalMessage"></p>
+          <button id="modalClose">OK</button>
+      </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  
+  <script src="config.js"></script>
+  <script>
+    // --- Firebase Setup ---
+    if (typeof window.firebaseConfig === 'undefined') {
+        showModal('Welcome!', 'Firebase configuration is missing. Please check config.js.');
+    } else {
+        firebase.initializeApp(window.firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // --- D3 Map Setup ---
+    let svg = d3.select("#map");
+    let projection = d3.geoNaturalEarth1();
+    let path = d3.geoPath().projection(projection);
+    let worldData; 
+
+    // --- Geohashing Implementation (no changes) ---
+    const BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz";
+    function geohash(lat, lng, precision = 6) {
+      let latRange = [-90, 90], lngRange = [-180, 180], hash = "", bit = 0, ch = 0, isEven = true;
+      while (hash.length < precision) {
+        if (isEven) {
+          const mid = (lngRange[0] + lngRange[1]) / 2;
+          if (lng >= mid) { ch |= (1 << (4 - bit)); lngRange[0] = mid; } else { lngRange[1] = mid; }
+        } else {
+          const mid = (latRange[0] + latRange[1]) / 2;
+          if (lat >= mid) { ch |= (1 << (4 - bit)); latRange[0] = mid; } else { latRange[1] = mid; }
+        }
+        isEven = !isEven;
+        if (++bit === 5) { hash += BASE32[ch]; bit = 0; ch = 0; }
+      }
+      return hash;
+    }
+    function decodeGeohash(hash) {
+      let latRange = [-90, 90], lngRange = [-180, 180], isEven = true;
+      for (let i = 0; i < hash.length; i++) {
+        const ch = BASE32.indexOf(hash[i]);
+        for (let bit = 4; bit >= 0; bit--) {
+          if (isEven) {
+            const mid = (lngRange[0] + lngRange[1]) / 2;
+            if (ch & (1 << bit)) { lngRange[0] = mid; } else { lngRange[1] = mid; }
+          } else {
+            const mid = (latRange[0] + latRange[1]) / 2;
+            if (ch & (1 << bit)) { latRange[0] = mid; } else { latRange[1] = mid; }
+          }
+          isEven = !isEven;
+        }
+      }
+      return { lat: (latRange[0] + latRange[1]) / 2, lng: (lngRange[0] + lngRange[1]) / 2 };
+    }
+
+    // --- Map Rendering ---
+    function setupAndRenderMap() {
+        if (!worldData) return; 
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        svg.attr("width", width).attr("height", height);
+        
+        // Create a version of the world without Antarctica to calculate the main projection
+        const worldWithoutAntarctica = { ...worldData, features: worldData.features.filter(d => d.properties.name !== "Antarctica") };
+        
+        // Fit the projection to the world EXCLUDING Antarctica. This makes the other continents larger.
+        projection.fitSize([width - 20, height - 20], worldWithoutAntarctica);
+
+        // UPDATED: This section ensures Antarctica is visible after scaling.
+        // It calculates if the full map overflows the screen vertically and shifts it up if needed.
+        const tempPath = d3.geoPath().projection(projection);
+        const [[x0, y0], [x1, y1]] = tempPath.bounds(worldData); // Get bounds of the FULL world
+        const y_overflow = y1 - (height - 20); // Calculate vertical overflow
+
+        if (y_overflow > 0) {
+            // If it overflows, shift the map up by that amount.
+            const [tx, ty] = projection.translate();
+            projection.translate([tx, ty - y_overflow]);
+        }
+        
+        // Update the main path generator with the final, adjusted projection
+        path.projection(projection);
+
+        svg.selectAll("g").remove(); 
+        svg.style("background-color", getComputedStyle(document.documentElement).getPropertyValue('--sea'));
+        svg.append("g").selectAll("path").data(worldData.features).enter().append("path")
+          .attr("fill", getComputedStyle(document.documentElement).getPropertyValue('--land'))
+          .attr("stroke", getComputedStyle(document.documentElement).getPropertyValue('--border'))
+          .attr("d", path);
+    }
+
+    // --- Modal Logic ---
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalMessage = document.getElementById('modalMessage');
+    const modalClose = document.getElementById('modalClose');
+
+    function showModal(title, message) {
+        modalTitle.textContent = title;
+        modalMessage.innerHTML = message;
+        modal.classList.add('visible');
+    }
+    function hideModal() {
+        modal.classList.remove('visible');
+    }
+    modalClose.addEventListener('click', hideModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) hideModal();
+    });
+
+    // --- Core Application Logic ---
+    const colors = ["#e6194b", "#3cb44b", "#4363d8", "#911eb4"];
+    let lastMessageTime = 0;
+    const MESSAGE_COOLDOWN = 5000; 
+
+    function sendMessage(colorIndex) {
+      const now = Date.now();
+      if (now - lastMessageTime < MESSAGE_COOLDOWN) {
+        showModal('Cooldown', `Please wait ${Math.ceil((MESSAGE_COOLDOWN - (now - lastMessageTime)) / 1000)} seconds.`);
+        return;
+      }
+      if (!navigator.geolocation) {
+        showModal('Error', "Geolocation is not supported by your browser.");
+        return;
+      }
+      const buttons = document.querySelectorAll('.buttons button');
+      buttons.forEach(btn => btn.disabled = true);
+      navigator.geolocation.getCurrentPosition(position => {
+        lastMessageTime = now;
+        const { latitude, longitude } = position.coords;
+        const timestamp = Date.now();
+        const hash = geohash(latitude, longitude, 6);
+        db.ref("messages").push({
+          geohash: hash,
+          color: colors[colorIndex],
+          timestamp
+        }).then(() => {
+          buttons.forEach(btn => btn.disabled = false);
+        }).catch(error => {
+          console.error("Firebase push error:", error);
+          showModal('Error', "Could not send message. Please try again.");
+          buttons.forEach(btn => btn.disabled = false);
+        });
+      }, error => {
+        console.error("Geolocation error:", error);
+        showModal('Error', "Location access denied. Please enable location services.");
+        buttons.forEach(btn => btn.disabled = false);
+      }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 });
+    }
+
+    function drawDot(data) {
+      const { geohash: hash, color, timestamp } = data;
+      if (!hash || !color || !timestamp) return;
+      const now = Date.now();
+      if (now - timestamp > 15000) return;
+      const coords = decodeGeohash(hash);
+      const [x, y] = projection([coords.lng, coords.lat]);
+      if (isNaN(x) || isNaN(y)) return;
+      
+      svg.append("circle")
+        .attr("cx", x)
+        .attr("cy", y)
+        .attr("r", 0)
+        .attr("fill", color)
+        .attr("fill-opacity", 0.7)
+        .transition().duration(500).attr("r", 10).attr("fill-opacity", 1)
+        .transition().duration(500).attr("r", 5)
+        .transition().delay(8000).duration(6000).attr("r", 0).attr("fill-opacity", 0)
+        .remove();
+    }
+
+    // --- Event Listeners and Initializers ---
+    document.getElementById('msg-0').addEventListener('click', () => sendMessage(0));
+    document.getElementById('msg-1').addEventListener('click', () => sendMessage(1));
+    document.getElementById('msg-2').addEventListener('click', () => sendMessage(2));
+    document.getElementById('msg-3').addEventListener('click', () => sendMessage(3));
+    
+    document.getElementById('aboutButton').addEventListener('click', () => {
+        showModal(
+            'About This Project',
+            `This map is inspired by Hoʻoponopono, a Hawaiian practice of reconciliation and forgiveness. <br><br> By sending a message, you contribute a point of light to a global tapestry of love, gratitude, and healing.`
+        );
+    });
+
+    db.ref("messages").orderByChild("timestamp").limitToLast(200).on("child_added", snapshot => {
+      drawDot(snapshot.val());
+    });
+
+    const toggleButton = document.getElementById("toggleTheme");
+    const storedTheme = localStorage.getItem("theme");
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initialTheme = storedTheme || (prefersDark ? "dark" : "light");
+    
+    function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        toggleButton.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+        localStorage.setItem("theme", theme);
+        setTimeout(setupAndRenderMap, 50);
+    }
+
+    toggleButton.addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme") || "light";
+      applyTheme(current === "dark" ? "light" : "dark");
+    });
+    
+    window.addEventListener("resize", setupAndRenderMap);
+
+    // --- Initial Load ---
+    d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(geoData => {
+        worldData = topojson.feature(geoData, geoData.objects.countries);
+        applyTheme(initialTheme);
+        
+        if (!localStorage.getItem('hasVisited')) {
+            setTimeout(() => {
+                showModal(
+                    'Welcome!',
+                    'Send a message of love, gratitude, or forgiveness to the world. Your location will be shown as a temporary anonymous dot on the map.'
+                );
+                localStorage.setItem('hasVisited', 'true');
+            }, 1500);
+        }
+    }).catch(err => {
+        console.error("Could not load map data:", err);
+        showModal('Error', "Could not load map data. Please refresh the page.");
+    });
+
+  </script>
+</body>
+</html>
