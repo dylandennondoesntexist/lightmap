@@ -1,0 +1,201 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  transition: background-color 0.3s, color 0.3s;
+  overflow: hidden;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+:root {
+  --bg: #ffffff;
+  --text: #000000;
+  --button-bg: #f0f0f0;
+  --land: #ffffff;
+  --sea: #ffffff;
+  --border: #cccccc;
+  --modal-bg: #ffffff;
+  --modal-shadow: rgba(0, 0, 0, 0.1);
+}
+[data-theme="dark"] {
+  --bg: #121212;
+  --text: #ffffff;
+  --button-bg: #333333;
+  --land: #000000;
+  --sea: #000000;
+  --border: #444444;
+  --modal-bg: #2c2c2c;
+  --modal-shadow: rgba(0, 0, 0, 0.5);
+}
+#map {
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.buttons {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 10;
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  .buttons {
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 300px;
+    gap: 10px;
+    justify-content: center;
+  }
+  .buttons button {
+    width: 140px;
+    white-space: nowrap;
+  }
+  .buttons button:nth-child(1),
+  .buttons button:nth-child(2) {
+    margin-bottom: 10px;
+  }
+}
+button, .menu-item {
+  padding: 10px 15px;
+  border: none; /* Ensure no border */
+  border-radius: 8px;
+  background-color: var(--button-bg);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+  font-weight: 500;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  outline: none;
+}
+button:hover, .menu-item:hover { transform: translateY(-2px); }
+button:disabled { cursor: not-allowed; opacity: 0.7; }
+#toggleTheme {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.3s, color 0.3s;
+  padding: 0;
+  box-shadow: none;
+}
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s, visibility 0.3s;
+}
+.modal-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+}
+.modal-content {
+  background-color: var(--modal-bg);
+  color: var(--text);
+  padding: 25px 30px;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px var(--modal-shadow);
+  text-align: center;
+  max-width: 90%;
+  width: 350px;
+}
+.modal-content h3 { margin-top: 0; }
+.modal-content p { margin: 0 0 20px 0; line-height: 1.6; }
+.modal-content button { padding: 10px 25px; }
+/* Hamburger menu styles */
+.hamburger, .hamburger:focus, .hamburger:active,
+.menu-item, .menu-item:focus, .menu-item:active {
+  outline: none;
+  box-shadow: none;
+}
+.hamburger:focus-visible,
+.menu-item:focus-visible {
+  outline: 2px solid var(--border);
+  outline-offset: 2px;
+}
+.hamburger {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  background: var(--bg);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.3s;
+  padding: 0;
+}
+.hamburger-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+.menu-dropdown {
+  position: absolute;
+  top: 56px;
+  left: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 10px;
+  min-width: 160px;
+  padding: 8px 0;
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  transition: opacity 0.2s;
+  border: none !important; /* Ensure no border */
+  box-shadow: none !important; /* Remove any shadow that may look like a border */
+}
+.menu-dropdown.visible { display: flex; }
+.menu-item {
+  padding: 12px 20px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font-size: 15px;
+  width: 100%;
+  transition: background 0.2s;
+  border: none !important; /* Ensure no border */
+  box-shadow: none !important; /* Remove any shadow that may look like a border */
+}
+button:focus, .menu-item:focus {
+  outline: none;
+}
