@@ -14,31 +14,42 @@
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Lightmap</title>
+  <title>wephemeral</title>
+  <link rel="stylesheet" href="style.css">
+  
   <script src="https://d3js.org/d3.v7.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson@3" defer></script>
-  <link rel="stylesheet" href="style.css">
+  <script type="module" src="main.js" defer></script>
+
 </head>
 <body>
   <!-- Hamburger menu -->
   <button class="hamburger" id="hamburgerMenu" aria-label="Open menu" tabindex="0">
     <svg class="hamburger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <line x1="4" y1="7" x2="20" y2="7"/>
-      <line x1="4" y1="12" x2="20" y2="12"/>
-      <line x1="4" y1="17" x2="20" y2="17"/>
+      <line x1="4" y1="7" x2="20" y2="7"></line>
+      <line x1="4" y1="12" x2="20" y2="12"></line>
+      <line x1="4" y1="17" x2="20" y2="17"></line>
     </svg>
   </button>
   <div class="menu-dropdown" id="menuDropdown" role="menu" aria-label="Main menu">
     <button class="menu-item" id="aboutMenu" role="menuitem" tabindex="-1" aria-label="About">About</button>
-    <button class="menu-item" id="privacyMenu" role="menuitem" tabindex="-1" aria-label="Privacy">Privacy</button>
   </div>
+  <!-- UPDATED: Added button-group wrappers for flexible positioning -->
   <div class="buttons">
-    <button id="msg-0" style="background-color: #e6194b; color: white;" aria-label="Send 'I love you' message">I love you</button>
-    <button id="msg-1" style="background-color: #3cb44b; color: white;" aria-label="Send 'Thank you' message">Thank you</button>
-    <button id="msg-2" style="background-color: #4363d8; color: white;" aria-label="Send 'I forgive you' message">I forgive you</button>
-    <button id="msg-3" style="background-color: #911eb4; color: white;" aria-label="Send 'Please forgive me' message">Please forgive me</button>
+    <div class="button-group left-group">
+      <button id="msg-0" style="background-color: #AA4499; color: white;" aria-label="Send 'I love you' message">I love you</button>
+      <button id="msg-1" style="background-color: #DDCC77; color: white;" aria-label="Send 'Thank you' message">Thank you</button>
+    </div>
+    <div class="button-group right-group">
+      <button id="msg-2" style="background-color: #44AA99; color: white;" aria-label="Send 'I forgive you' message">I forgive you</button>
+      <button id="msg-3" style="background-color: #332288; color: white;" aria-label="Send 'Please forgive me' message">Please forgive me</button>
+    </div>
   </div>
-  <button id="toggleTheme" aria-label="Toggle dark/light mode"></button>
+  <!-- UPDATED: Theme toggle with SVG icons inside -->
+  <button id="toggleTheme" aria-label="Toggle dark/light mode">
+    <svg class="sun-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><g><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></g></svg>
+    <svg class="moon-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
+  </button>
   <svg id="map"></svg>
   <div id="modal" class="modal-overlay">
     <div class="modal-content">
@@ -47,9 +58,5 @@
       <button id="modalClose">OK</button>
     </div>
   </div>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" defer></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js" defer></script>
-  <script src="config.js"></script>
-  <script src="main.js" defer></script>
 </body>
 </html>

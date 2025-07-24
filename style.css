@@ -15,7 +15,8 @@ html, body {
   box-sizing: inherit;
 }
 :root {
-  --bg: #ffffff;
+  /* UPDATED: New light mode background color */
+  --bg: #eeeeee;
   --text: #000000;
   --button-bg: #f0f0f0;
   --land: #ffffff;
@@ -45,35 +46,82 @@ html, body {
   position: absolute;
   bottom: 20px;
   left: 20px;
-  right: auto;
+  right: 20px; /* Allow space-between to work in landscape */
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-direction: column; /* Default: stack button groups vertically on left */
+  gap: 10px; /* Gap between button groups */
   z-index: 10;
+  align-items: flex-start; /* Align groups to the left */
 }
+
+.button-group {
+  display: flex;
+  flex-direction: column; /* Stack buttons within each group by default */
+  gap: 10px; /* Gap between buttons within a group */
+}
+
+/* Mobile Portrait Styles */
 @media (max-width: 600px) and (orientation: portrait) {
   .buttons {
     left: 50%;
     bottom: 20px;
     transform: translateX(-50%);
-    flex-direction: row;
-    flex-wrap: wrap;
-    width: 300px;
-    gap: 10px;
-    justify-content: center;
+    flex-direction: row; /* Main container is a row */
+    flex-wrap: wrap; /* Allows wrapping */
+    width: 300px; /* Fixed width for the button container */
+    gap: 10px; /* Gap between buttons */
+    justify-content: center; /* Center buttons horizontally */
+    align-items: flex-start; /* Reset for individual button alignment */
+    right: auto; /* Reset right for centering */
+  }
+  .button-group {
+    /* Make button groups not act as flex containers themselves in portrait */
+    display: contents; /* This makes children participate directly in parent's flex layout */
   }
   .buttons button {
-    width: 140px;
-    white-space: nowrap;
-  }
-  .buttons button:nth-child(1),
-  .buttons button:nth-child(2) {
-    margin-bottom: 10px;
+    flex: 1 1 calc(50% - 5px); /* Two buttons per row with a 10px gap */
+    max-width: calc(50% - 5px); /* Max width to prevent stretching */
   }
 }
+
+/* Mobile Landscape Styles */
+@media (max-height: 600px) and (orientation: landscape) {
+  .buttons {
+    left: 20px; /* Align left group to left */
+    right: 20px; /* Align right group to right */
+    bottom: 0px; /* Align with the very bottom of the screen */
+    padding-bottom: 0px; /* Remove padding from the bottom edge */
+    transform: none; /* Remove translateX centering from portrait */
+    width: auto; /* Allow width to be determined by content and spacing */
+    display: flex;
+    flex-direction: row; /* Arrange groups in a row */
+    justify-content: space-between; /* Push groups to corners */
+    align-items: flex-end; /* Align groups to the bottom */
+    gap: 0; /* No gap between groups, space-between handles it */
+  }
+  .button-group {
+    display: flex;
+    flex-direction: column; /* Stack buttons vertically within each group */
+    gap: 10px; /* Gap between buttons in a group */
+  }
+  .left-group {
+    align-items: flex-start; /* Align left group buttons to the left */
+  }
+  .right-group {
+    align-items: flex-end; /* Align right group buttons to the right */
+  }
+  .buttons button {
+    /* Allow buttons to size naturally based on content and padding */
+    width: auto; /* Ensure width is not fixed */
+    flex: none; /* Override flex: 1 1 calc(50% - 5px) from portrait */
+    max-width: none; /* Override max-width from portrait */
+    padding: 10px 15px; /* Ensure sufficient padding for text to fit */
+  }
+}
+
 button, .menu-item {
   padding: 10px 15px;
-  border: none; /* Ensure no border */
+  border: none;
   border-radius: 8px;
   background-color: var(--button-bg);
   color: var(--text);
@@ -86,6 +134,7 @@ button, .menu-item {
 }
 button:hover, .menu-item:hover { transform: translateY(-2px); }
 button:disabled { cursor: not-allowed; opacity: 0.7; }
+
 #toggleTheme {
   position: absolute;
   top: 10px;
@@ -104,6 +153,18 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
   padding: 0;
   box-shadow: none;
 }
+/* BUG FIX: Make SVG icons visible and switchable */
+#toggleTheme svg {
+  stroke: var(--text);
+  width: 24px;
+  height: 24px;
+}
+[data-theme="light"] .moon-icon { display: block; }
+[data-theme="light"] .sun-icon { display: none; }
+[data-theme="dark"] .moon-icon { display: none; }
+[data-theme="dark"] .sun-icon { display: block; }
+
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -136,17 +197,8 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
 .modal-content h3 { margin-top: 0; }
 .modal-content p { margin: 0 0 20px 0; line-height: 1.6; }
 .modal-content button { padding: 10px 25px; }
+
 /* Hamburger menu styles */
-.hamburger, .hamburger:focus, .hamburger:active,
-.menu-item, .menu-item:focus, .menu-item:active {
-  outline: none;
-  box-shadow: none;
-}
-.hamburger:focus-visible,
-.menu-item:focus-visible {
-  outline: 2px solid var(--border);
-  outline-offset: 2px;
-}
 .hamburger {
   position: absolute;
   top: 12px;
@@ -162,15 +214,21 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
   cursor: pointer;
   transition: background 0.3s;
   padding: 0;
+  /* UPDATED: Remove shadow and border */
+  box-shadow: none;
+  border: none;
 }
+/* BUG FIX: Make the SVG icon ignore clicks so the button underneath receives them */
 .hamburger-icon {
   width: 24px;
   height: 24px;
   display: block;
+  pointer-events: none;
 }
 .menu-dropdown {
   position: absolute;
-  top: 56px;
+  /* UPDATED: Menu positioning from your file */
+  top: 42px;
   left: 12px;
   background: var(--bg);
   color: var(--text);
@@ -181,8 +239,6 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
   display: none;
   flex-direction: column;
   transition: opacity 0.2s;
-  border: none !important; /* Ensure no border */
-  box-shadow: none !important; /* Remove any shadow that may look like a border */
 }
 .menu-dropdown.visible { display: flex; }
 .menu-item {
@@ -193,9 +249,6 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
   font-size: 15px;
   width: 100%;
   transition: background 0.2s;
-  border: none !important; /* Ensure no border */
-  box-shadow: none !important; /* Remove any shadow that may look like a border */
-}
-button:focus, .menu-item:focus {
-  outline: none;
+  box-shadow: none;
+  border: none;
 }
