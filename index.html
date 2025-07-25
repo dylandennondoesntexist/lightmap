@@ -23,8 +23,8 @@
 
 </head>
 <body>
-  <!-- Hamburger menu -->
-  <button class="hamburger" id="hamburgerMenu" aria-label="Open menu" tabindex="0">
+  <!-- Hamburger menu with aria-expanded attribute for accessibility -->
+  <button class="hamburger" id="hamburgerMenu" aria-label="Open menu" aria-expanded="false" tabindex="0">
     <svg class="hamburger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <line x1="4" y1="7" x2="20" y2="7"></line>
       <line x1="4" y1="12" x2="20" y2="12"></line>
@@ -37,12 +37,12 @@
   <!-- Button-group wrappers for flexible positioning -->
   <div class="buttons">
     <div class="button-group left-group">
-      <button id="msg-0" style="background-color: #AA4499; color: white;" aria-label="Send 'I love you' message">I love you</button>
-      <button id="msg-1" style="background-color: #DDCC77; color: white;" aria-label="Send 'Thank you' message">Thank you</button>
+      <button id="msg-0" class="btn-love" aria-label="Send 'I love you' message">I love you</button>
+      <button id="msg-1" class="btn-thank-you" aria-label="Send 'Thank you' message">Thank you</button>
     </div>
     <div class="button-group right-group">
-      <button id="msg-2" style="background-color: #44AA99; color: white;" aria-label="Send 'I forgive you' message">I forgive you</button>
-      <button id="msg-3" style="background-color: #332288; color: white;" aria-label="Send 'Please forgive me' message">Please forgive me</button>
+      <button id="msg-2" class="btn-forgive-you" aria-label="Send 'I forgive you' message">I forgive you</button>
+      <button id="msg-3" class="btn-forgive-me" aria-label="Send 'Please forgive me' message">Please forgive me</button>
     </div>
   </div>
   <!-- Theme toggle with SVG icons inside -->

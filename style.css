@@ -46,10 +46,10 @@ html, body {
   position: absolute;
   bottom: 20px;
   left: 20px;
-  right: 20px; /* Allow space-between to work in landscape */
+  right: 20px;
   display: flex;
   flex-direction: column; /* Default: stack button groups vertically on left */
-  gap: 10px; /* Gap between button groups */
+  gap: 10px;
   z-index: 10;
   align-items: flex-start; /* Align groups to the left */
 }
@@ -59,84 +59,78 @@ html, body {
 .button-group {
   display: flex;
   flex-direction: column; /* Stack buttons within each group by default */
-  gap: 10px; /* Gap between buttons within a group */
+  gap: 10px;
 }
 
-/* Mobile Portrait Styles */
+/* Mobile Portrait Styles - Refactored to use CSS Grid */
 @media (max-width: 600px) and (orientation: portrait) {
   .buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Create a 2-column grid */
     left: 50%;
-    bottom: 20px;
     transform: translateX(-50%);
-    flex-direction: row; /* Main container is a row */
-    flex-wrap: wrap; /* Allows wrapping */
-    width: 300px; /* Fixed width for the button container */
-    gap: 10px; /* Gap between buttons */
-    justify-content: center; /* Center buttons horizontally */
-    align-items: flex-start; /* Reset for individual button alignment */
-    right: auto; /* Reset right for centering */
+    width: 320px; /* Adjusted width for grid layout */
+    justify-items: center; /* Center buttons within their grid cell */
+    /* Reset properties not needed for grid */
+    align-items: initial;
+    right: auto;
   }
   .button-group {
-    /* Make button groups not act as flex containers themselves in portrait */
-    display: contents; /* This makes children participate directly in parent's flex layout */
+    /* The groups no longer need special display properties */
+    display: contents; /* This is the simplest way to make grid work on the buttons directly */
   }
   .buttons button {
-    flex: 1 1 calc(50% - 5px); /* Two buttons per row with a 10px gap */
-    max-width: calc(50% - 5px); /* Max width to prevent stretching */
+    width: 150px; /* Maintain button width */
+    /* Flex properties are not needed for grid children */
   }
 }
 
-/* Mobile Landscape Styles */
+/* Mobile Landscape Styles - Unchanged, as this is a solid flexbox implementation */
 @media (max-height: 600px) and (orientation: landscape) {
   .buttons {
-    left: 20px; /* Align left group to left */
-    right: 20px; /* Align right group to right */
-    bottom: 0px; /* Align with the very bottom of the screen */
-    padding-bottom: 0px; /* Remove padding from the bottom edge */
-    transform: none; /* Remove translateX centering from portrait */
-    width: auto; /* Allow width to be determined by content and spacing */
+    left: 20px;
+    right: 20px;
+    bottom: 0px;
+    transform: none;
+    width: auto;
     display: flex;
-    flex-direction: row; /* Arrange groups in a row */
-    justify-content: space-between; /* Push groups to corners */
-    align-items: flex-end; /* Align groups to the bottom */
-    gap: 0; /* No gap between groups, space-between handles it */
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 0;
   }
   .button-group {
     display: flex;
-    flex-direction: column; /* Stack buttons vertically within each group */
-    gap: 10px; /* Gap between buttons in a group */
+    flex-direction: column;
+    gap: 10px;
   }
   .left-group {
-    align-items: flex-start; /* Align left group buttons to the left */
+    align-items: flex-start;
   }
   .right-group {
-    align-items: flex-end; /* Align right group buttons to the right */
+    align-items: flex-end;
   }
   .buttons button {
-    /* Allow buttons to size naturally based on content and padding */
-    width: auto; /* Ensure width is not fixed */
-    flex: none; /* Override flex: 1 1 calc(50% - 5px) from portrait */
-    max-width: none; /* Override max-width from portrait */
-    padding: 10px 15px; /* Ensure sufficient padding for text to fit */
+    width: auto;
+    padding: 10px 15px;
   }
 }
+
+.btn-love { background-color: #AA4499; color: white; }
+.btn-thank-you { background-color: #EEAA77; color: white; }
+.btn-forgive-you { background-color: #44AA99; color: white; }
+.btn-forgive-me { background-color: #332288; color: white; }
 
 button, .menu-item {
   padding: 10px 15px;
   border: none;
-  border-radius: 12px; /* Increased border-radius for softer corners */
+  border-radius: 10px;
   background-color: var(--button-bg);
   color: var(--text);
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s, transform 0.2s;
   font-weight: 500;
-  /* Enhanced box-shadow for more depth */
-  box-shadow: 0 4px 10px rgba(0,0,0,0.2); 
-  outline: none;
-  /* Subtle linear gradient for dimension */
-  background-image: linear-gradient(to bottom, rgba(255,255,255,0.1), rgba(0,0,0,0.05));
-  /* Subtle text shadow for better contrast */
   text-shadow: 0 1px 2px rgba(0,0,0,0.2); 
 }
 button:hover, .menu-item:hover { transform: translateY(-2px); }
@@ -160,7 +154,6 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
   padding: 0;
   box-shadow: none;
 }
-/* SVG icons visible and switchable */
 #toggleTheme svg {
   stroke: var(--text);
   width: 24px;
@@ -205,7 +198,6 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
 .modal-content p { margin: 0 0 20px 0; line-height: 1.6; }
 .modal-content button { padding: 10px 25px; }
 
-/* Hamburger menu styles */
 .hamburger {
   position: absolute;
   top: 12px;

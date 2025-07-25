@@ -35,8 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const projection = d3.geoNaturalEarth1();
   const path = d3.geoPath().projection(projection);
   let worldData;
-  // Store active dots with their expiration time
-  let activeDots = []; 
+  // REMOVED: The activeDots array is no longer needed. D3 will manage state.
 
   // --- Geohashing ---
   const BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz";
@@ -80,51 +79,30 @@ document.addEventListener('DOMContentLoaded', () => {
     svg.attr("width", width).attr("height", height);
     projection.fitSize([width, height], worldData);
     path.projection(projection);
-    mapLayer.selectAll("path").remove();
+
+    // Redraw the map land and borders
     mapLayer.style("background-color", getComputedStyle(document.documentElement).getPropertyValue('--sea'));
-    mapLayer.selectAll("path").data(worldData.features).enter().append("path")
+    mapLayer.selectAll("path").data(worldData.features)
+      .join("path") // Use .join for a standard enter/update/exit pattern
       .attr("fill", getComputedStyle(document.documentElement).getPropertyValue('--land'))
       .attr("stroke", getComputedStyle(document.documentElement).getPropertyValue('--border'))
       .attr("d", path);
     
-    // Clear existing dots from the SVG layer before redrawing
-    dotLayer.selectAll("circle").remove();
-
-    // Filter out expired dots and redraw the remaining active dots
-    const now = Date.now();
-    activeDots = activeDots.filter(dot => dot.expirationTime > now); // Keep only non-expired dots
-
-    activeDots.forEach(dotInfo => {
-      const { data, expirationTime } = dotInfo;
-      const coords = decodeGeohash(data.geohash);
-      const [x, y] = projection([coords.lng, coords.lat]);
-      if (isNaN(x) || isNaN(y)) return;
-
-      const dot = dotLayer.append("circle")
-        .attr("cx", x)
-        .attr("cy", y)
-        .attr("r", 4) // Set radius directly for redrawn dots
-        .attr("fill", data.color)
-        .attr("fill-opacity", 0.8); // Set opacity directly for redrawn dots
-
-      // Calculate remaining time for this dot to disappear
-      const remainingTime = expirationTime - now;
-      if (remainingTime > 0) {
-        dot.transition().duration(remainingTime).attr("r", 0).attr("fill-opacity", 0)
-           .remove(); // Remove the SVG element after its lifespan
-      } else {
-        // If somehow a dot with remainingTime <= 0 makes it here, remove it immediately
-        dot.remove();
-      }
-    });
+    // --- OPTIMIZATION ---
+    // Instead of removing and redrawing dots, simply update their positions.
+    // We select all existing circles and recalculate their cx/cy attributes
+    // based on the data we attached to them with .datum().
+    dotLayer.selectAll("circle")
+      .attr("cx", d => projection([d.lng, d.lat])[0])
+      .attr("cy", d => projection([d.lng, d.lat])[1]);
   }
 
   // --- Core Application Logic ---
-  const colors = ["#AA4499", "#DDCC77", "#44AA99", "#332288"];
+  const colors = ["#AA4499", "#EEAA77", "#44AA99", "#332288"];
   let lastMessageTime = 0;
   const MESSAGE_COOLDOWN = 5000; // 5 seconds
 
-  function sendMessage(colorIndex, button) { // Added button parameter
+  function sendMessage(colorIndex, button) {
     const now = Date.now();
     if (now - lastMessageTime < MESSAGE_COOLDOWN) {
       const timeLeft = Math.ceil((MESSAGE_COOLDOWN - (now - lastMessageTime)) / 1000);
@@ -149,13 +127,12 @@ document.addEventListener('DOMContentLoaded', () => {
         color: colors[colorIndex],
         timestamp
       }).then(() => {
-        // Change button text to "Displayed!" on success
         const originalButtonText = button.textContent;
         button.textContent = "Displayed!";
         setTimeout(() => {
-          button.textContent = originalButtonText; // Revert text after 2 seconds
+          button.textContent = originalButtonText;
           buttons.forEach(btn => btn.disabled = false);
-        }, 2000); // 2 seconds delay for text revert
+        }, 2000);
       }).catch(error => {
         showFirebaseError(error);
         buttons.forEach(btn => btn.disabled = false);
@@ -163,42 +140,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }, error => {
       showModal('Error', "It's (likely) not you, it's us. Sometimes we have a hard time getting location, especially on mobile browsers. Please try again while we work on a fix and ensure you have location enabled.");
       buttons.forEach(btn => btn.disabled = false);
-    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 }); // UPDATED: maximumAge to 15 seconds
+    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 });
   }
 
   function drawDot(data) {
     const { geohash: hash, color, timestamp } = data;
     if (!hash || !color || !timestamp) return;
-    const now = Date.now();
+    
     const DOT_LIFESPAN = 10000; // 10 seconds
-    const expirationTime = timestamp + DOT_LIFESPAN;
+    const now = Date.now();
+    const age = now - timestamp;
 
-    // Only draw dots that are still active
-    if (now > expirationTime) return; 
+    // Only draw dots that are still within their lifespan
+    if (age > DOT_LIFESPAN) return; 
 
     const coords = decodeGeohash(hash);
     const [x, y] = projection([coords.lng, coords.lat]);
     if (isNaN(x) || isNaN(y)) return;
 
+    // --- DATA BINDING ---
+    // We bind the geographic coordinates directly to the new circle element.
+    // This allows us to access it later during a resize event.
     const dot = dotLayer.append("circle")
+      .datum({ lat: coords.lat, lng: coords.lng }) // Attach data to the element
       .attr("cx", x)
       .attr("cy", y)
       .attr("fill", color);
 
-    // Initial animation for newly added dots
+    // The entire animation lifecycle is defined here. It is self-contained
+    // and will not be interrupted by resizes.
     dot.attr("r", 0)
       .attr("fill-opacity", 0)
       .transition().duration(3000).attr("r", 4).attr("fill-opacity", 0.8)
-      .transition().delay(3000).duration(7000).attr("r", 0).attr("fill-opacity", 0) // Fade out after 3s in, 7s out
-      .remove(); // Remove the SVG element after the animation completes
-
-    // Add dot to activeDots with its expiration time
-    activeDots.push({ data, expirationTime });
-
-    // Remove dot data from activeDots array after its full lifespan
-    setTimeout(() => {
-      activeDots = activeDots.filter(d => d.data.timestamp !== data.timestamp);
-    }, DOT_LIFESPAN);
+      .transition().delay(3000).duration(7000).attr("r", 0).attr("fill-opacity", 0)
+      .remove(); // The .remove() call ensures ephemerality.
+      
+    // REMOVED: No need to manage the activeDots array anymore.
   }
 
   // --- Event Listeners and Initializers ---
@@ -242,7 +219,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
-    // A small delay to ensure CSS variables are applied before map redraw
     setTimeout(setupAndRenderMap, 50); 
   }
   toggleThemeButton.addEventListener('click', () => {
@@ -277,7 +253,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!menuDropdown.contains(e.target) && e.target !== hamburger) closeMenuDropdown();
   });
   
-  // About text
   aboutMenu.addEventListener('click', () => {
     closeMenuDropdown();
     showModal('About', "Inspired by Ho'oponopono & The Pitt. <br><br> Press a button to display a dot on the map. Location is converted to an approximate 6-character geohash. Timestamp, button color and geohash are sent anonymously. No personal identifiers are stored or shared.");
@@ -288,13 +263,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function showFirebaseError(error) {
-    // User-friendly message
     const userMessage = "An unexpected error occurred. Our team will work on a fix. Please try again later.";
     showModal('Error', userMessage);
-
-    // --- Error Reporting (placeholder for More robust reporting logic if necessary) ---
-
-    // Simple debugging for now
     console.error("Firebase Error Details:", error);
   }
 
