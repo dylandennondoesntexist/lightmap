@@ -15,13 +15,13 @@ html, body {
   box-sizing: inherit;
 }
 :root {
-  /* UPDATED: New light mode background color */
-  --bg: #eeeeee;
+  /*colors*/
+  --bg: #ffffff;
   --text: #000000;
   --button-bg: #f0f0f0;
   --land: #ffffff;
   --sea: #ffffff;
-  --border: #cccccc;
+  --border: #888888;
   --modal-bg: #ffffff;
   --modal-shadow: rgba(0, 0, 0, 0.1);
 }
@@ -53,7 +53,9 @@ html, body {
   z-index: 10;
   align-items: flex-start; /* Align groups to the left */
 }
-
+.buttons button {
+  width: 150px; /* Fixed width for buttons */
+}
 .button-group {
   display: flex;
   flex-direction: column; /* Stack buttons within each group by default */
@@ -153,7 +155,7 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
   padding: 0;
   box-shadow: none;
 }
-/* BUG FIX: Make SVG icons visible and switchable */
+/* SVG icons visible and switchable */
 #toggleTheme svg {
   stroke: var(--text);
   width: 24px;
@@ -214,11 +216,10 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
   cursor: pointer;
   transition: background 0.3s;
   padding: 0;
-  /* UPDATED: Remove shadow and border */
   box-shadow: none;
   border: none;
 }
-/* BUG FIX: Make the SVG icon ignore clicks so the button underneath receives them */
+
 .hamburger-icon {
   width: 24px;
   height: 24px;
@@ -227,7 +228,6 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
 }
 .menu-dropdown {
   position: absolute;
-  /* UPDATED: Menu positioning from your file */
   top: 42px;
   left: 12px;
   background: var(--bg);

@@ -2,7 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, push, onChildAdded, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-// Import your config as a module
+// Import config as a module
 import { firebaseConfig } from "./config.js";
 
 // --- Wrap all logic in a DOMContentLoaded listener ---
@@ -153,9 +153,9 @@ document.addEventListener('DOMContentLoaded', () => {
         buttons.forEach(btn => btn.disabled = false);
       });
     }, error => {
-      showModal('Error', "Location access denied. Please enable location services.");
+      showModal('Error', "It's (likely) not you, it's us. Sometimes we have a hard time getting location on mobile browsers. Please try again while we work on a fix (and ensure you have location enabled).");
       buttons.forEach(btn => btn.disabled = false);
-    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 15000 }); // UPDATED: maximumAge to 15 seconds
+    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 }); // UPDATED: maximumAge to 15 seconds
   }
 
   function drawDot(data) {
@@ -200,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('msg-3').addEventListener('click', () => sendMessage(3));
 
   const messagesRef = ref(db, 'messages');
-  const recentMessagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(200));
+  const recentMessagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(300));
   onChildAdded(recentMessagesQuery, snapshot => {
     drawDot(snapshot.val());
   });
@@ -269,10 +269,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!menuDropdown.contains(e.target) && e.target !== hamburger) closeMenuDropdown();
   });
   
-  // UPDATED: New About text
+  // About text
   aboutMenu.addEventListener('click', () => {
     closeMenuDropdown();
-    showModal('About', "Inspired by Ho'oponopono. <br><br> Location is converted to an approximate 6-character geohash. Button color and geohash are sent anonymously. We don't collect any additional data.");
+    showModal('About', "Inspired by Ho'oponopono & The Pitt. <br><br> Privacy: This app uses approximate location to display presence on the map. Location is converted to an approximate 6-character geohash. Timestamp, button color and geohash are sent anonymously. No personal identifiers are stored or shared.");
   });
 
   document.addEventListener('keydown', e => {
