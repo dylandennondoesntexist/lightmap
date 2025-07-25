@@ -124,15 +124,20 @@ html, body {
 button, .menu-item {
   padding: 10px 15px;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px; /* Increased border-radius for softer corners */
   background-color: var(--button-bg);
   color: var(--text);
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s, transform 0.2s;
   font-weight: 500;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  /* Enhanced box-shadow for more depth */
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2); 
   outline: none;
+  /* Subtle linear gradient for dimension */
+  background-image: linear-gradient(to bottom, rgba(255,255,255,0.1), rgba(0,0,0,0.05));
+  /* Subtle text shadow for better contrast */
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2); 
 }
 button:hover, .menu-item:hover { transform: translateY(-2px); }
 button:disabled { cursor: not-allowed; opacity: 0.7; }

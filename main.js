@@ -124,10 +124,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastMessageTime = 0;
   const MESSAGE_COOLDOWN = 5000; // 5 seconds
 
-  function sendMessage(colorIndex) {
+  function sendMessage(colorIndex, button) { // Added button parameter
     const now = Date.now();
     if (now - lastMessageTime < MESSAGE_COOLDOWN) {
-      showModal('Cooldown', `Please wait ${Math.ceil((MESSAGE_COOLDOWN - (now - lastMessageTime)) / 1000)} seconds.`);
+      const timeLeft = Math.ceil((MESSAGE_COOLDOWN - (now - lastMessageTime)) / 1000);
+      const unit = timeLeft === 1 ? "second" : "seconds";
+      showModal('Cooldown', `Please wait ${timeLeft} ${unit}.`);
       return;
     }
     if (!navigator.geolocation) {
@@ -147,13 +149,19 @@ document.addEventListener('DOMContentLoaded', () => {
         color: colors[colorIndex],
         timestamp
       }).then(() => {
-        buttons.forEach(btn => btn.disabled = false);
+        // Change button text to "Displayed!" on success
+        const originalButtonText = button.textContent;
+        button.textContent = "Displayed!";
+        setTimeout(() => {
+          button.textContent = originalButtonText; // Revert text after 2 seconds
+          buttons.forEach(btn => btn.disabled = false);
+        }, 2000); // 2 seconds delay for text revert
       }).catch(error => {
         showFirebaseError(error);
         buttons.forEach(btn => btn.disabled = false);
       });
     }, error => {
-      showModal('Error', "It's (likely) not you, it's us. Sometimes we have a hard time getting location on mobile browsers. Please try again while we work on a fix (and ensure you have location enabled).");
+      showModal('Error', "It's (likely) not you, it's us. Sometimes we have a hard time getting location, especially on mobile browsers. Please try again while we work on a fix and ensure you have location enabled.");
       buttons.forEach(btn => btn.disabled = false);
     }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 }); // UPDATED: maximumAge to 15 seconds
   }
@@ -194,10 +202,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Event Listeners and Initializers ---
-  document.getElementById('msg-0').addEventListener('click', () => sendMessage(0));
-  document.getElementById('msg-1').addEventListener('click', () => sendMessage(1));
-  document.getElementById('msg-2').addEventListener('click', () => sendMessage(2));
-  document.getElementById('msg-3').addEventListener('click', () => sendMessage(3));
+  document.getElementById('msg-0').addEventListener('click', (event) => sendMessage(0, event.target));
+  document.getElementById('msg-1').addEventListener('click', (event) => sendMessage(1, event.target));
+  document.getElementById('msg-2').addEventListener('click', (event) => sendMessage(2, event.target));
+  document.getElementById('msg-3').addEventListener('click', (event) => sendMessage(3, event.target));
 
   const messagesRef = ref(db, 'messages');
   const recentMessagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(300));
@@ -272,7 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // About text
   aboutMenu.addEventListener('click', () => {
     closeMenuDropdown();
-    showModal('About', "Inspired by Ho'oponopono & The Pitt. <br><br> Privacy: This app uses approximate location to display presence on the map. Location is converted to an approximate 6-character geohash. Timestamp, button color and geohash are sent anonymously. No personal identifiers are stored or shared.");
+    showModal('About', "Inspired by Ho'oponopono & The Pitt. <br><br> Press a button to display a dot on the map. Location is converted to an approximate 6-character geohash. Timestamp, button color and geohash are sent anonymously. No personal identifiers are stored or shared.");
   });
 
   document.addEventListener('keydown', e => {
@@ -280,13 +288,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function showFirebaseError(error) {
-    let msg = "A network or server error occurred. ";
-    if (error && error.code) {
-      msg += `<br><br><b>Firebase error:</b> ${error.code}`;
-      if (error.message) msg += `<br>${error.message}`;
-    } else if (typeof error === "string") {
-      msg += `<br><br>${error}`;
-    }
-    showModal('Error', msg);
+    // User-friendly message
+    const userMessage = "An unexpected error occurred. Our team will work on a fix. Please try again later.";
+    showModal('Error', userMessage);
+
+    // --- Error Reporting (placeholder for More robust reporting logic if necessary) ---
+
+    // Simple debugging for now
+    console.error("Firebase Error Details:", error);
   }
+
 });
