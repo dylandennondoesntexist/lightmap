@@ -8,6 +8,29 @@ import { firebaseConfig } from "./config.js";
 // --- Wrap all logic in a DOMContentLoaded listener ---
 document.addEventListener('DOMContentLoaded', () => {
 
+  // --- Configuration Constants ---
+  const CONFIG = {
+    DOT_LIFESPAN: 10000,        // Total time dot should exist (in ms)
+    FADE_IN_DURATION: 2000,     // How long the fade-in animation takes
+    FADE_OUT_DURATION: 5000,    // How long the fade-out animation takes
+    MESSAGE_COOLDOWN: 5000,     // Cooldown between sending messages
+    GEOLOCATION_TIMEOUT: 10000, // How long to wait for location
+    RESIZE_DEBOUNCE: 150        // Wait time for resize event
+  };
+
+  // --- Utility Functions ---
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
   // --- App Initialization ---
   function showModal(title, message) {
     const modal = document.getElementById('modal');
@@ -35,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const projection = d3.geoNaturalEarth1();
   const path = d3.geoPath().projection(projection);
   let worldData;
-  // REMOVED: The activeDots array is no longer needed. D3 will manage state.
+  let activeDots = []; // Array to hold the state of all visible dots
 
   // --- Geohashing ---
   const BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz";
@@ -80,32 +103,27 @@ document.addEventListener('DOMContentLoaded', () => {
     projection.fitSize([width, height], worldData);
     path.projection(projection);
 
-    // Redraw the map land and borders
     mapLayer.style("background-color", getComputedStyle(document.documentElement).getPropertyValue('--sea'));
     mapLayer.selectAll("path").data(worldData.features)
-      .join("path") // Use .join for a standard enter/update/exit pattern
+      .join("path")
       .attr("fill", getComputedStyle(document.documentElement).getPropertyValue('--land'))
       .attr("stroke", getComputedStyle(document.documentElement).getPropertyValue('--border'))
       .attr("d", path);
     
-    // --- OPTIMIZATION ---
-    // Instead of removing and redrawing dots, simply update their positions.
-    // We select all existing circles and recalculate their cx/cy attributes
-    // based on the data we attached to them with .datum().
-    dotLayer.selectAll("circle")
-      .attr("cx", d => projection([d.lng, d.lat])[0])
-      .attr("cy", d => projection([d.lng, d.lat])[1]);
+    activeDots.forEach(dot => {
+        const [x, y] = projection([dot.lng, dot.lat]);
+        d3.select(`#dot-${dot.id}`).attr("cx", x).attr("cy", y);
+    });
   }
 
   // --- Core Application Logic ---
   const colors = ["#AA4499", "#EEAA77", "#44AA99", "#332288"];
   let lastMessageTime = 0;
-  const MESSAGE_COOLDOWN = 5000; // 5 seconds
 
   function sendMessage(colorIndex, button) {
     const now = Date.now();
-    if (now - lastMessageTime < MESSAGE_COOLDOWN) {
-      const timeLeft = Math.ceil((MESSAGE_COOLDOWN - (now - lastMessageTime)) / 1000);
+    if (now - lastMessageTime < CONFIG.MESSAGE_COOLDOWN) {
+      const timeLeft = Math.ceil((CONFIG.MESSAGE_COOLDOWN - (now - lastMessageTime)) / 1000);
       const unit = timeLeft === 1 ? "second" : "seconds";
       showModal('Cooldown', `Please wait ${timeLeft} ${unit}.`);
       return;
@@ -132,6 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
           button.textContent = originalButtonText;
           buttons.forEach(btn => btn.disabled = false);
+          button.blur();
         }, 2000);
       }).catch(error => {
         showFirebaseError(error);
@@ -140,42 +159,75 @@ document.addEventListener('DOMContentLoaded', () => {
     }, error => {
       showModal('Error', "It's (likely) not you, it's us. Sometimes we have a hard time getting location, especially on mobile browsers. Please try again while we work on a fix and ensure you have location enabled.");
       buttons.forEach(btn => btn.disabled = false);
-    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 });
+    }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
   }
 
-  function drawDot(data) {
-    const { geohash: hash, color, timestamp } = data;
-    if (!hash || !color || !timestamp) return;
-    
-    const DOT_LIFESPAN = 10000; // 10 seconds
+  // --- Animation Render Loop ---
+  function renderLoop() {
     const now = Date.now();
-    const age = now - timestamp;
+    const dotsToRemove = [];
 
-    // Only draw dots that are still within their lifespan
-    if (age > DOT_LIFESPAN) return; 
+    activeDots.forEach(dot => {
+      const age = now - dot.timestamp;
+      const dotElement = d3.select(`#dot-${dot.id}`);
+
+      if (age > CONFIG.DOT_LIFESPAN) {
+        dotsToRemove.push(dot.id);
+        dotElement.remove();
+        return;
+      }
+
+      let opacity = 0.8;
+      let radius = 4;
+
+      if (age < CONFIG.FADE_IN_DURATION) {
+        opacity = d3.easeCubicOut(age / CONFIG.FADE_IN_DURATION) * 0.8;
+        radius = d3.easeCubicOut(age / CONFIG.FADE_IN_DURATION) * 4;
+      }
+      
+      const fadeOutStartTime = CONFIG.DOT_LIFESPAN - CONFIG.FADE_OUT_DURATION;
+      if (age > fadeOutStartTime) {
+        const fadeOutProgress = (age - fadeOutStartTime) / CONFIG.FADE_OUT_DURATION;
+        opacity = (1 - d3.easeCubicIn(fadeOutProgress)) * 0.8;
+        radius = (1 - d3.easeCubicIn(fadeOutProgress)) * 4;
+      }
+
+      dotElement.attr("r", radius).attr("fill-opacity", opacity);
+    });
+
+    if (dotsToRemove.length > 0) {
+      activeDots = activeDots.filter(d => !dotsToRemove.includes(d.id));
+    }
+
+    requestAnimationFrame(renderLoop);
+  }
+
+  function addNewDot(snapshot) {
+    const { geohash: hash, color, timestamp } = snapshot.val();
+    const id = snapshot.key;
+    if (!hash || !color || !timestamp || !id) return;
+    
+    if (Date.now() - timestamp > CONFIG.DOT_LIFESPAN) {
+      return;
+    }
+    if (activeDots.some(d => d.id === id)) {
+      return;
+    }
 
     const coords = decodeGeohash(hash);
     const [x, y] = projection([coords.lng, coords.lat]);
     if (isNaN(x) || isNaN(y)) return;
 
-    // --- DATA BINDING ---
-    // We bind the geographic coordinates directly to the new circle element.
-    // This allows us to access it later during a resize event.
-    const dot = dotLayer.append("circle")
-      .datum({ lat: coords.lat, lng: coords.lng }) // Attach data to the element
+    const newDot = { id, lat: coords.lat, lng: coords.lng, timestamp };
+    activeDots.push(newDot);
+
+    dotLayer.append("circle")
+      .attr("id", `dot-${id}`)
       .attr("cx", x)
       .attr("cy", y)
-      .attr("fill", color);
-
-    // The entire animation lifecycle is defined here. It is self-contained
-    // and will not be interrupted by resizes.
-    dot.attr("r", 0)
-      .attr("fill-opacity", 0)
-      .transition().duration(3000).attr("r", 4).attr("fill-opacity", 0.8)
-      .transition().delay(3000).duration(7000).attr("r", 0).attr("fill-opacity", 0)
-      .remove(); // The .remove() call ensures ephemerality.
-      
-    // REMOVED: No need to manage the activeDots array anymore.
+      .attr("fill", color)
+      .attr("r", 0)
+      .attr("fill-opacity", 0);
   }
 
   // --- Event Listeners and Initializers ---
@@ -186,19 +238,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const messagesRef = ref(db, 'messages');
   const recentMessagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(300));
-  onChildAdded(recentMessagesQuery, snapshot => {
-    drawDot(snapshot.val());
-  });
+  onChildAdded(recentMessagesQuery, addNewDot);
 
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(geoData => {
     worldData = topojson.feature(geoData, geoData.objects.countries);
     setupAndRenderMap();
+    renderLoop();
   }).catch(err => {
     console.error("Could not load map data:", err);
     showModal('Error', "Could not load map data. Please refresh the page.");
   });
 
-  window.addEventListener("resize", setupAndRenderMap);
+  window.addEventListener("resize", debounce(setupAndRenderMap, CONFIG.RESIZE_DEBOUNCE));
 
   // --- UI Elements (Modal, Theme, Menu) ---
   const modal = document.getElementById('modal');

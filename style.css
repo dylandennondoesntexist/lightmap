@@ -42,6 +42,9 @@ html, body {
   top: 0;
   left: 0;
 }
+#map path {
+  transition: fill 0.3s ease, stroke 0.3s ease;
+}
 .buttons {
   position: absolute;
   bottom: 20px;
@@ -67,6 +70,7 @@ html, body {
   .buttons {
     display: grid;
     grid-template-columns: 1fr 1fr; /* Create a 2-column grid */
+    gap: 10px;
     left: 50%;
     transform: translateX(-50%);
     width: 320px; /* Adjusted width for grid layout */
@@ -129,12 +133,29 @@ button, .menu-item {
   color: var(--text);
   font-size: 14px;
   cursor: pointer;
+  /* Keep transition for smooth movement */
   transition: background-color 0.3s, transform 0.2s;
   font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.2); 
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  background-image: linear-gradient(to bottom, rgba(255,255,255,0.1), rgba(0,0,0,0.05));
+  outline: none; /* Remove outline on focus for aesthetic, consider accessibility */
 }
-button:hover, .menu-item:hover { transform: translateY(-2px); }
-button:disabled { cursor: not-allowed; opacity: 0.7; }
+
+/* Button moves up when actively pressed */
+button:active {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* Smaller shadow when pressed */
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  /* Ensure it stays at its original position when disabled */
+  transform: translateY(0);
+  /* Remove active state styles when disabled */
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
 
 #toggleTheme {
   position: absolute;
@@ -153,6 +174,7 @@ button:disabled { cursor: not-allowed; opacity: 0.7; }
   transition: background 0.3s, color 0.3s;
   padding: 0;
   box-shadow: none;
+  border: none;
 }
 #toggleTheme svg {
   stroke: var(--text);
