@@ -14,7 +14,7 @@
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>wephemeral</title>
+  <title>A minimalist connection map</title>
   <link rel="stylesheet" href="style.css">
   
   <script src="https://d3js.org/d3.v7.min.js" defer></script>
@@ -36,6 +36,10 @@
   </div>
   <!-- Button-group wrappers for flexible positioning -->
   <div class="buttons">
+    <!-- ADDED: Hidden button container -->
+    <div id="hereForYouContainer" class="hidden">
+      <button id="hereForYouButton" class="btn-here" aria-label="Send 'Here for you' message">Here for you</button>
+    </div>
     <div class="button-group left-group">
       <button id="msg-0" class="btn-love" aria-label="Send 'I love you' message">I love you</button>
       <button id="msg-1" class="btn-thank-you" aria-label="Send 'Thank you' message">Thank you</button>
