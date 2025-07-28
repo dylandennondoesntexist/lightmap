@@ -24,7 +24,6 @@ html, body {
   --border: #888888;
   --modal-bg: #ffffff;
   --modal-shadow: rgba(0, 0, 0, 0.1);
-  /* ADDED: Color for the permanent dot */
   --permanent-dot-color: #000000;
 }
 [data-theme="dark"] {
@@ -36,7 +35,6 @@ html, body {
   --border: #444444;
   --modal-bg: #2c2c2c;
   --modal-shadow: rgba(0, 0, 0, 0.5);
-  /* ADDED: Color for the permanent dot in dark mode */
   --permanent-dot-color: #ffffff;
 }
 #map {
@@ -49,7 +47,6 @@ html, body {
 #map path {
   transition: fill 0.3s ease, stroke 0.3s ease;
 }
-/* ADDED: Style for the permanent dots */
 .dot-permanent {
   fill: var(--permanent-dot-color);
   transition: fill 0.3s ease;
@@ -74,7 +71,6 @@ html, body {
   gap: 10px;
 }
 
-/* ADDED: Styles for the hidden button container */
 #hereForYouContainer {
   width: 100%;
   display: flex;
@@ -91,7 +87,6 @@ html, body {
 [data-theme="dark"] #hereForYouButton {
   border: 1px solid var(--text);
 }
-
 
 /* Mobile Portrait Styles */
 @media (max-width: 600px) and (orientation: portrait) {
@@ -112,13 +107,13 @@ html, body {
   .buttons button {
     width: 150px;
   }
-  /* ADDED: Here For You button spanning two columns in portrait */
+  /* Here For You button spanning two columns in portrait */
   #hereForYouContainer {
     grid-column: 1 / -1; /* Span all columns */
     justify-content: center;
   }
   #hereForYouButton {
-    width: 100%; /* Full width of the container (310px) */
+    width: 100%; /* Full width of the container */
   }
 }
 
@@ -151,7 +146,7 @@ html, body {
     width: auto;
     padding: 10px 15px;
   }
-  /* ADDED: Positioning for Here For You button in landscape */
+  /* Positioning for Here For You button in landscape */
   #hereForYouContainer {
     position: absolute;
     bottom: 93px; /* Position it above the other buttons */

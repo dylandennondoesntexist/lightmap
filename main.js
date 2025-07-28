@@ -19,6 +19,16 @@ document.addEventListener('DOMContentLoaded', () => {
     UNLOCK_COUNT: 2 // How many clicks per button to unlock
   };
 
+  // --- DOM Element Constants ---
+  const modal = document.getElementById('modal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalMessage = document.getElementById('modalMessage');
+  const modalClose = document.getElementById('modalClose');
+  const toggleThemeButton = document.getElementById('toggleTheme');
+  const hamburger = document.getElementById('hamburgerMenu');
+  const menuDropdown = document.getElementById('menuDropdown');
+  const aboutMenu = document.getElementById('aboutMenu');
+
   // --- Utility Functions ---
   function debounce(func, wait) {
     let timeout;
@@ -49,9 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- D3 Map Setup ---
   const svg = d3.select("#map");
   const mapLayer = svg.append("g").attr("id", "map-layer");
-  // CHANGE: Draw permanent dots first so they are on a lower layer
   const permanentDotLayer = svg.append("g").attr("id", "permanent-dot-layer");
-  // CHANGE: Draw ephemeral dots second so they appear on top
   const dotLayer = svg.append("g").attr("id", "dot-layer");
   const projection = d3.geoNaturalEarth1();
   const path = d3.geoPath().projection(projection);
@@ -112,7 +120,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const [x, y] = projection([dot.lng, dot.lat]);
       d3.select(`#dot-${dot.id}`).attr("cx", x).attr("cy", y);
     });
-    // Reproject permanent dots on resize
     permanentDotLayer.selectAll("circle").each(function(d) {
         const [x, y] = projection([d.lng, d.lat]);
         d3.select(this).attr("cx", x).attr("cy", y);
@@ -148,8 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }).then(() => {
         const originalButtonText = button.textContent;
         button.textContent = "Displayed!";
-        // Increment click count for hidden button
-        incrementButtonClick(colorIndex);
+        hereForYouFeature.incrementButtonClick(colorIndex);
         setTimeout(() => {
           button.textContent = originalButtonText;
           buttons.forEach(btn => btn.disabled = false);
@@ -212,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function addNewDot(snapshot) {
     const { geohash: hash, color, timestamp, type } = snapshot.val();
-    if (type === 'permanent') return; // Handled by a different listener
+    if (type === 'permanent') return;
 
     const id = snapshot.key;
     if (!hash || !color || !timestamp || !id || typeof timestamp !== 'number') {
@@ -246,103 +252,116 @@ document.addEventListener('DOMContentLoaded', () => {
       .attr("fill-opacity", 0);
   }
 
-  // --- "Here For You" Feature Logic ---
-  const hereForYouContainer = document.getElementById('hereForYouContainer');
-  const hereForYouButton = document.getElementById('hereForYouButton');
-  const BUTTON_COUNT_KEY = 'ephemeralButtonCounts';
-  const HERE_FOR_YOU_PRESSED_KEY = 'ephemeralhereForYouPressed';
+  // --- "Here For You" Feature Module ---
+  const hereForYouFeature = {
+    container: document.getElementById('hereForYouContainer'),
+    button: document.getElementById('hereForYouButton'),
+    countKey: 'ephemeralButtonCounts',
+    pressedKey: 'ephemeralhereForYouPressed',
 
-  function getStartOfTodayHawaii() {
-    const now = new Date();
-    // Get UTC date parts
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth();
-    const day = now.getUTCDate();
-    // Create a date object for midnight UTC on the current day
-    const todayUTC = new Date(Date.UTC(year, month, day, 0, 0, 0));
-    // Hawaii is UTC-10, so we add 10 hours to UTC midnight to get HST midnight
-    todayUTC.setUTCHours(10);
-    return todayUTC.getTime();
-  }
+    init() {
+      this.checkAndResetDailyData();
+      this.checkIfUnlocked();
+      this.fetchAndDrawPermanentDots();
+      this.button.addEventListener('click', () => this.handleClick());
+    },
 
-  function checkAndResetDailyData() {
-    const todayHawaiiStart = getStartOfTodayHawaii();
-    const lastPressedData = JSON.parse(localStorage.getItem(HERE_FOR_YOU_PRESSED_KEY));
+    getStartOfTodayHawaii() {
+      const now = new Date();
+      const year = now.getUTCFullYear();
+      const month = now.getUTCMonth();
+      const day = now.getUTCDate();
+      const todayUTC = new Date(Date.UTC(year, month, day, 0, 0, 0));
+      todayUTC.setUTCHours(10);
+      return todayUTC.getTime();
+    },
 
-    if (lastPressedData && lastPressedData.timestamp < todayHawaiiStart) {
-      localStorage.removeItem(BUTTON_COUNT_KEY);
-      localStorage.removeItem(HERE_FOR_YOU_PRESSED_KEY);
-    }
-  }
-  
-  function incrementButtonClick(index) {
-    let counts = JSON.parse(localStorage.getItem(BUTTON_COUNT_KEY)) || [0, 0, 0, 0];
-    counts[index]++;
-    localStorage.setItem(BUTTON_COUNT_KEY, JSON.stringify(counts));
-    checkIfUnlocked();
-  }
-
-  function checkIfUnlocked() {
-    const counts = JSON.parse(localStorage.getItem(BUTTON_COUNT_KEY)) || [0, 0, 0, 0];
-    const lastPressedData = JSON.parse(localStorage.getItem(HERE_FOR_YOU_PRESSED_KEY));
-    const todayHawaiiStart = getStartOfTodayHawaii();
-
-    // If already pressed today, don't show
-    if(lastPressedData && lastPressedData.timestamp >= todayHawaiiStart) {
-        return;
-    }
-
-    const unlocked = counts.every(count => count >= CONFIG.UNLOCK_COUNT);
-    if (unlocked) {
-      hereForYouContainer.classList.remove('hidden');
-    }
-  }
-
-  hereForYouButton.addEventListener('click', () => {
-    navigator.geolocation.getCurrentPosition(position => {
-      const { latitude, longitude } = position.coords;
-      const hash = geohash(latitude, longitude, 6);
-      push(ref(db, 'permanent_messages'), {
-        geohash: hash,
-        timestamp: serverTimestamp(),
-        type: 'permanent'
-      });
-      
-      const pressData = { timestamp: Date.now() }; // Use local time for simplicity
-      localStorage.setItem(HERE_FOR_YOU_PRESSED_KEY, JSON.stringify(pressData));
-      hereForYouContainer.classList.add('hidden');
-
-    }, error => {
-      showModal('Location Needed', 'Could not get your location to place the dot.');
-    }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT });
-  });
-
-  function fetchAndDrawPermanentDots() {
-    permanentDotLayer.selectAll("*").remove(); // Clear existing permanent dots
-    const permanentMessagesRef = ref(db, 'permanent_messages');
-    const todayHawaiiStart = getStartOfTodayHawaii();
+    checkAndResetDailyData() {
+      const todayHawaiiStart = this.getStartOfTodayHawaii();
+      const lastPressedData = JSON.parse(localStorage.getItem(this.pressedKey));
+      if (lastPressedData && lastPressedData.timestamp < todayHawaiiStart) {
+        localStorage.removeItem(this.countKey);
+        localStorage.removeItem(this.pressedKey);
+      }
+    },
     
-    get(query(permanentMessagesRef, orderByChild('timestamp'))).then(snapshot => {
-        if (snapshot.exists()) {
-            snapshot.forEach(childSnapshot => {
-                const { geohash: hash, timestamp } = childSnapshot.val();
-                if (timestamp >= todayHawaiiStart) {
-                    const coords = decodeGeohash(hash);
-                    const [x, y] = projection([coords.lng, coords.lat]);
-                    if (!isNaN(x) && !isNaN(y)) {
-                        permanentDotLayer.append("circle")
-                            .datum({lng: coords.lng, lat: coords.lat}) // Store data for resize
-                            .attr("class", "dot-permanent")
-                            .attr("cx", x)
-                            .attr("cy", y)
-                            // CHANGE: Made permanent dots 50% smaller
-                            .attr("r", 1.5);
-                    }
-                }
-            });
-        }
-    });
-  }
+    incrementButtonClick(index) {
+      let counts = JSON.parse(localStorage.getItem(this.countKey)) || [0, 0, 0, 0];
+      counts[index]++;
+      localStorage.setItem(this.countKey, JSON.stringify(counts));
+      this.checkIfUnlocked();
+    },
+
+    checkIfUnlocked() {
+      const counts = JSON.parse(localStorage.getItem(this.countKey)) || [0, 0, 0, 0];
+      const lastPressedData = JSON.parse(localStorage.getItem(this.pressedKey));
+      const todayHawaiiStart = this.getStartOfTodayHawaii();
+
+      if(lastPressedData && lastPressedData.timestamp >= todayHawaiiStart) {
+          return;
+      }
+      const unlocked = counts.every(count => count >= CONFIG.UNLOCK_COUNT);
+      if (unlocked) {
+        this.container.classList.remove('hidden');
+      }
+    },
+
+    handleClick() {
+      this.button.disabled = true;
+      navigator.geolocation.getCurrentPosition(position => {
+        const { latitude, longitude } = position.coords;
+        const hash = geohash(latitude, longitude, 6);
+        push(ref(db, 'permanent_messages'), {
+          geohash: hash,
+          timestamp: serverTimestamp(),
+          type: 'permanent'
+        }).then(() => {
+          const pressData = { timestamp: Date.now() };
+          localStorage.setItem(this.pressedKey, JSON.stringify(pressData));
+          this.button.textContent = "Displayed!";
+          setTimeout(() => {
+            this.container.classList.add('hidden');
+          }, 2000);
+        }).catch(error => {
+          showFirebaseError(error);
+          this.button.disabled = false;
+        });
+      }, error => {
+        if (error.code === error.PERMISSION_DENIED) {
+          showModal('Location Blocked', "Your browser has blocked location access.<br><br>To display your dot on the map, please enable location in your browser or system settings.");
+        } else {
+          showModal('Error', "It's (likely) not you, it's us. Sometimes we have a hard time getting location, especially on mobile browsers. Please try again while we work on a fix and ensure you have location enabled.");
+        } 
+        this.button.disabled = false;
+      }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT });
+    },
+
+    fetchAndDrawPermanentDots() {
+      permanentDotLayer.selectAll("*").remove();
+      const permanentMessagesRef = ref(db, 'permanent_messages');
+      const todayHawaiiStart = this.getStartOfTodayHawaii();
+      
+      get(query(permanentMessagesRef, orderByChild('timestamp'))).then(snapshot => {
+          if (snapshot.exists()) {
+              snapshot.forEach(childSnapshot => {
+                  const { geohash: hash, timestamp } = childSnapshot.val();
+                  if (timestamp >= todayHawaiiStart) {
+                      const coords = decodeGeohash(hash);
+                      const [x, y] = projection([coords.lng, coords.lat]);
+                      if (!isNaN(x) && !isNaN(y)) {
+                          permanentDotLayer.append("circle")
+                              .datum({lng: coords.lng, lat: coords.lat})
+                              .attr("class", "dot-permanent")
+                              .attr("cx", x)
+                              .attr("cy", y)
+                              .attr("r", 1.5);
+                      }
+                  }
+              });
+          }
+      });
+    }
+  };
 
 
   // --- Event Listeners and Initializers ---
@@ -358,9 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(geoData => {
     worldData = topojson.feature(geoData, geoData.objects.countries);
     setupAndRenderMap();
-    checkAndResetDailyData();
-    checkIfUnlocked();
-    fetchAndDrawPermanentDots();
+    hereForYouFeature.init();
     renderLoop();
   }).catch(err => {
     console.error("Could not load map data:", err);
@@ -369,36 +386,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.addEventListener("resize", debounce(setupAndRenderMap, CONFIG.RESIZE_DEBOUNCE));
 
-  // --- UI Elements (Modal, Theme, Menu) ---
-  const modal = document.getElementById('modal');
-  const modalClose = document.getElementById('modalClose');
-  const toggleThemeButton = document.getElementById('toggleTheme');
-  const hamburger = document.getElementById('hamburgerMenu');
-  const menuDropdown = document.getElementById('menuDropdown');
-  const aboutMenu = document.getElementById('aboutMenu');
-
-  function hideModal() {
-    modal.classList.remove('visible');
-  }
+  // --- UI Event Handlers ---
   modalClose.addEventListener('click', hideModal);
   modal.addEventListener('click', (e) => {
     if (e.target === modal) hideModal();
   });
 
-  function applyTheme(theme) {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-    setTimeout(setupAndRenderMap, 50); 
-  }
   toggleThemeButton.addEventListener('click', () => {
     const current = document.documentElement.getAttribute("data-theme") || "light";
     applyTheme(current === "dark" ? "light" : "dark");
   });
 
-  function closeMenuDropdown() {
-    menuDropdown.style.display = 'none';
-    hamburger.setAttribute('aria-expanded', 'false');
-  }
   hamburger.addEventListener('click', () => {
     const isExpanded = hamburger.getAttribute('aria-expanded') === 'true';
     if (isExpanded) {
@@ -410,13 +408,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  function handleMenuKeydown(e) {
-    if (e.key === 'Escape') return closeMenuDropdown();
-    if (e.key === 'Tab' && document.activeElement === aboutMenu) {
-        hamburger.focus();
-        e.preventDefault();
-    }
-  }
   menuDropdown.addEventListener('keydown', handleMenuKeydown);
   document.addEventListener('click', e => {
     if (!menuDropdown.contains(e.target) && e.target !== hamburger) closeMenuDropdown();
@@ -424,22 +415,41 @@ document.addEventListener('DOMContentLoaded', () => {
   
   aboutMenu.addEventListener('click', () => {
     closeMenuDropdown();
-    showModal('About', "Inspired by Ho'oponopono & The Pitt. <br><br> Press a button to display a dot on the map. Location is converted to an approximate 6-character geohash. Timestamp, button color and geohash are sent anonymously. No personal identifiers are stored or shared.");
+    showModal('About', "Inspired by Ho'oponopono & The Pitt. <br><br> Press a button to display a dot on the map.               Location is converted to an approximate 6-character geohash. No personal identifiers are stored or shared.");
   });
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && modal.classList.contains('visible')) hideModal();
   });
 
-  function showModal(title, message) {
-    const modal = document.getElementById('modal');
-    const modalTitle = document.getElementById('modalTitle');
-    const modalMessage = document.getElementById('modalMessage');
-    if (modal && modalTitle && modalMessage) {
-      modalTitle.textContent = title;
-      modalMessage.innerHTML = message;
-      modal.classList.add('visible');
+  // --- UI Helper Functions ---
+  function hideModal() {
+    modal.classList.remove('visible');
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+    setTimeout(setupAndRenderMap, 50); 
+  }
+
+  function closeMenuDropdown() {
+    menuDropdown.style.display = 'none';
+    hamburger.setAttribute('aria-expanded', 'false');
+  }
+
+  function handleMenuKeydown(e) {
+    if (e.key === 'Escape') return closeMenuDropdown();
+    if (e.key === 'Tab' && document.activeElement === aboutMenu) {
+        hamburger.focus();
+        e.preventDefault();
     }
+  }
+
+  function showModal(title, message) {
+    modalTitle.textContent = title;
+    modalMessage.innerHTML = message;
+    modal.classList.add('visible');
   }
 
   function showFirebaseError(error) {
