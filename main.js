@@ -1,6 +1,6 @@
 // Import Firebase modular functions
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, push, onChildAdded, query, orderByChild, limitToLast, serverTimestamp, onValue, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, push, onChildAdded, query, orderByChild, limitToLast, serverTimestamp, onValue, get, startAt } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // Import config as a module
 import { firebaseConfig } from "./config.js";
@@ -13,21 +13,20 @@ document.addEventListener('DOMContentLoaded', () => {
     DOT_LIFESPAN: 10000,
     FADE_IN_DURATION: 2000,
     FADE_OUT_DURATION: 5000,
-    MESSAGE_COOLDOWN: 5000,
+    MESSAGE_COOLDOWN_DEFAULT: 5000,
+    MESSAGE_COOLDOWN_INITIAL: 100,
+    INITIAL_PRESS_LIMIT: 10,
     GEOLOCATION_TIMEOUT: 10000,
     RESIZE_DEBOUNCE: 150,
-    UNLOCK_COUNT: 2 // How many clicks per button to unlock
+    UNLOCK_COUNT: 1 // How many clicks per button to unlock
   };
 
-  // --- DOM Element Constants ---
-  const modal = document.getElementById('modal');
-  const modalTitle = document.getElementById('modalTitle');
-  const modalMessage = document.getElementById('modalMessage');
-  const modalClose = document.getElementById('modalClose');
-  const toggleThemeButton = document.getElementById('toggleTheme');
-  const hamburger = document.getElementById('hamburgerMenu');
-  const menuDropdown = document.getElementById('menuDropdown');
-  const aboutMenu = document.getElementById('aboutMenu');
+  // --- Local Storage Keys ---
+  const KEYS = {
+    BUTTON_COUNTS: 'ephemeralButtonCounts',
+    HERE_FOR_YOU_PRESSED: 'ephemeralhereForYouPressed',
+    TOTAL_PRESSES: 'ephemeralTotalPresses'
+  };
 
   // --- Utility Functions ---
   function debounce(func, wait) {
@@ -132,8 +131,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function sendMessage(colorIndex, button) {
     const now = Date.now();
-    if (now - lastMessageTime < CONFIG.MESSAGE_COOLDOWN) {
-      const timeLeft = Math.ceil((CONFIG.MESSAGE_COOLDOWN - (now - lastMessageTime)) / 1000);
+    const totalPresses = parseInt(localStorage.getItem(KEYS.TOTAL_PRESSES) || '0', 10);
+    const currentCooldown = totalPresses < CONFIG.INITIAL_PRESS_LIMIT ? CONFIG.MESSAGE_COOLDOWN_INITIAL : CONFIG.MESSAGE_COOLDOWN_DEFAULT;
+
+    if (now - lastMessageTime < currentCooldown) {
+      const timeLeft = Math.ceil((currentCooldown - (now - lastMessageTime)) / 1000);
       const unit = timeLeft === 1 ? "second" : "seconds";
       showModal('Cooldown', `Please wait ${timeLeft} ${unit}.`);
       return;
@@ -144,6 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const buttons = document.querySelectorAll('.buttons button');
     buttons.forEach(btn => btn.disabled = true);
+    
+    const buttonText = button.querySelector('.button-text');
+    const originalButtonText = buttonText.textContent;
+    button.classList.add('loading');
+
     navigator.geolocation.getCurrentPosition(position => {
       lastMessageTime = now;
       const { latitude, longitude } = position.coords;
@@ -153,26 +160,27 @@ document.addEventListener('DOMContentLoaded', () => {
         color: colors[colorIndex],
         timestamp: serverTimestamp()
       }).then(() => {
-        const originalButtonText = button.textContent;
-        button.textContent = "Displayed!";
-        hereForYouFeature.incrementButtonClick(colorIndex);
+        button.classList.remove('loading');
+        buttonText.textContent = "Displayed!";
+        incrementButtonClick(colorIndex);
+        localStorage.setItem(KEYS.TOTAL_PRESSES, totalPresses + 1); // Increment total presses
         setTimeout(() => {
-          button.textContent = originalButtonText;
+          buttonText.textContent = originalButtonText;
           buttons.forEach(btn => btn.disabled = false);
           button.blur();
         }, 2000);
       }).catch(error => {
-        showFirebaseError(error);
+        showFirebaseError(error, "writing ephemeral message");
+        button.classList.remove('loading');
+        buttonText.textContent = originalButtonText;
         buttons.forEach(btn => btn.disabled = false);
       });
     }, error => {
-      if (error.code === error.PERMISSION_DENIED) {
-        showModal('Location Blocked', "Your browser has blocked location access.<br><br>To display your dot on the map, please enable location in your browser or system settings.");
-      } else {
-        showModal('Error', "It's (likely) not you, it's us. Sometimes we have a hard time getting location, especially on mobile browsers. Please try again while we work on a fix and ensure you have location enabled.");
-      } 
+      handleGeolocationError(error);
+      button.classList.remove('loading');
+      buttonText.textContent = originalButtonText;
       buttons.forEach(btn => btn.disabled = false);
-    }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
+    }, { enableHighAccuracy: true, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
   }
 
   // --- Animation Render Loop for temporary dots ---
@@ -252,123 +260,130 @@ document.addEventListener('DOMContentLoaded', () => {
       .attr("fill-opacity", 0);
   }
 
-  // --- "Here For You" Feature Module ---
-  const hereForYouFeature = {
-    container: document.getElementById('hereForYouContainer'),
-    button: document.getElementById('hereForYouButton'),
-    countKey: 'ephemeralButtonCounts',
-    pressedKey: 'ephemeralhereForYouPressed',
+  // --- "Here For You" Feature Logic ---
+  const hereForYouContainer = document.getElementById('hereForYouContainer');
+  const hereForYouButton = document.getElementById('hereForYouButton');
 
-    init() {
-      this.checkAndResetDailyData();
-      this.checkIfUnlocked();
-      this.fetchAndDrawPermanentDots();
-      this.button.addEventListener('click', () => this.handleClick());
-    },
+  function getStartOfTodayHawaii() {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth();
+    const day = now.getUTCDate();
+    // Create a date object for midnight UTC on the current day
+    const todayUTC = new Date(Date.UTC(year, month, day, 0, 0, 0));
+    // Hawaii Standard Time (HST) is UTC-10. To get midnight in HST, we find midnight
+    // in the UTC timezone and then add 10 hours to it.
+    todayUTC.setUTCHours(10);
+    return todayUTC.getTime();
+  }
 
-    getStartOfTodayHawaii() {
-      const now = new Date();
-      const year = now.getUTCFullYear();
-      const month = now.getUTCMonth();
-      const day = now.getUTCDate();
-      const todayUTC = new Date(Date.UTC(year, month, day, 0, 0, 0));
-      todayUTC.setUTCHours(10);
-      return todayUTC.getTime();
-    },
+  function checkAndResetDailyData() {
+    const todayHawaiiStart = getStartOfTodayHawaii();
+    const lastPressedData = JSON.parse(localStorage.getItem(KEYS.HERE_FOR_YOU_PRESSED));
 
-    checkAndResetDailyData() {
-      const todayHawaiiStart = this.getStartOfTodayHawaii();
-      const lastPressedData = JSON.parse(localStorage.getItem(this.pressedKey));
-      if (lastPressedData && lastPressedData.timestamp < todayHawaiiStart) {
-        localStorage.removeItem(this.countKey);
-        localStorage.removeItem(this.pressedKey);
-      }
-    },
-    
-    incrementButtonClick(index) {
-      let counts = JSON.parse(localStorage.getItem(this.countKey)) || [0, 0, 0, 0];
-      counts[index]++;
-      localStorage.setItem(this.countKey, JSON.stringify(counts));
-      this.checkIfUnlocked();
-    },
-
-    checkIfUnlocked() {
-      const counts = JSON.parse(localStorage.getItem(this.countKey)) || [0, 0, 0, 0];
-      const lastPressedData = JSON.parse(localStorage.getItem(this.pressedKey));
-      const todayHawaiiStart = this.getStartOfTodayHawaii();
-
-      if(lastPressedData && lastPressedData.timestamp >= todayHawaiiStart) {
-          return;
-      }
-      const unlocked = counts.every(count => count >= CONFIG.UNLOCK_COUNT);
-      if (unlocked) {
-        this.container.classList.remove('hidden');
-      }
-    },
-
-    handleClick() {
-      this.button.disabled = true;
-      navigator.geolocation.getCurrentPosition(position => {
-        const { latitude, longitude } = position.coords;
-        const hash = geohash(latitude, longitude, 6);
-        push(ref(db, 'permanent_messages'), {
-          geohash: hash,
-          timestamp: serverTimestamp(),
-          type: 'permanent'
-        }).then(() => {
-          const pressData = { timestamp: Date.now() };
-          localStorage.setItem(this.pressedKey, JSON.stringify(pressData));
-          this.button.textContent = "Displayed!";
-          setTimeout(() => {
-            this.container.classList.add('hidden');
-          }, 2000);
-        }).catch(error => {
-          showFirebaseError(error);
-          this.button.disabled = false;
-        });
-      }, error => {
-        if (error.code === error.PERMISSION_DENIED) {
-          showModal('Location Blocked', "Your browser has blocked location access.<br><br>To display your dot on the map, please enable location in your browser or system settings.");
-        } else {
-          showModal('Error', "It's (likely) not you, it's us. Sometimes we have a hard time getting location, especially on mobile browsers. Please try again while we work on a fix and ensure you have location enabled.");
-        } 
-        this.button.disabled = false;
-      }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT });
-    },
-
-    fetchAndDrawPermanentDots() {
-      permanentDotLayer.selectAll("*").remove();
-      const permanentMessagesRef = ref(db, 'permanent_messages');
-      const todayHawaiiStart = this.getStartOfTodayHawaii();
-      
-      get(query(permanentMessagesRef, orderByChild('timestamp'))).then(snapshot => {
-          if (snapshot.exists()) {
-              snapshot.forEach(childSnapshot => {
-                  const { geohash: hash, timestamp } = childSnapshot.val();
-                  if (timestamp >= todayHawaiiStart) {
-                      const coords = decodeGeohash(hash);
-                      const [x, y] = projection([coords.lng, coords.lat]);
-                      if (!isNaN(x) && !isNaN(y)) {
-                          permanentDotLayer.append("circle")
-                              .datum({lng: coords.lng, lat: coords.lat})
-                              .attr("class", "dot-permanent")
-                              .attr("cx", x)
-                              .attr("cy", y)
-                              .attr("r", 1.5);
-                      }
-                  }
-              });
-          }
-      });
+    if (lastPressedData && lastPressedData.timestamp < todayHawaiiStart) {
+      localStorage.removeItem(KEYS.BUTTON_COUNTS);
+      localStorage.removeItem(KEYS.HERE_FOR_YOU_PRESSED);
+      localStorage.removeItem(KEYS.TOTAL_PRESSES);
     }
-  };
+  }
+  
+  function incrementButtonClick(index) {
+    let counts = JSON.parse(localStorage.getItem(KEYS.BUTTON_COUNTS)) || [0, 0, 0, 0];
+    counts[index]++;
+    localStorage.setItem(KEYS.BUTTON_COUNTS, JSON.stringify(counts));
+    checkIfUnlocked(counts);
+  }
+
+  function checkIfUnlocked(currentCounts) {
+    const counts = currentCounts || JSON.parse(localStorage.getItem(KEYS.BUTTON_COUNTS)) || [0, 0, 0, 0];
+    const lastPressedData = JSON.parse(localStorage.getItem(KEYS.HERE_FOR_YOU_PRESSED));
+    const todayHawaiiStart = getStartOfTodayHawaii();
+
+    if(lastPressedData && lastPressedData.timestamp >= todayHawaiiStart) {
+        return;
+    }
+
+    const unlocked = counts.every(count => count >= CONFIG.UNLOCK_COUNT);
+    if (unlocked) {
+      hereForYouContainer.classList.remove('hidden');
+    }
+  }
+
+  hereForYouButton.addEventListener('click', () => {
+    hereForYouButton.disabled = true;
+    const buttonText = hereForYouButton.querySelector('.button-text');
+    const originalButtonText = buttonText.textContent;
+    hereForYouButton.classList.add('loading');
+
+    navigator.geolocation.getCurrentPosition(position => {
+      const { latitude, longitude } = position.coords;
+      const hash = geohash(latitude, longitude, 6);
+      push(ref(db, 'permanent_messages'), {
+        geohash: hash,
+        timestamp: serverTimestamp(),
+        type: 'permanent'
+      }).then(() => {
+        const pressData = { timestamp: Date.now() };
+        localStorage.setItem(KEYS.HERE_FOR_YOU_PRESSED, JSON.stringify(pressData));
+        
+        hereForYouButton.classList.remove('loading');
+        buttonText.textContent = "Displayed!";
+
+        setTimeout(() => {
+          hereForYouContainer.classList.add('hidden');
+          buttonText.textContent = originalButtonText;
+          hereForYouButton.disabled = false;
+        }, 2000);
+      }).catch(error => {
+        showFirebaseError(error, "writing permanent message");
+        hereForYouButton.classList.remove('loading');
+        buttonText.textContent = originalButtonText;
+        hereForYouButton.disabled = false;
+      });
+    }, error => {
+      handleGeolocationError(error);
+      hereForYouButton.classList.remove('loading');
+      buttonText.textContent = originalButtonText;
+      hereForYouButton.disabled = false;
+    }, { enableHighAccuracy: true, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
+  });
+
+  function listenForPermanentDots() {
+    permanentDotLayer.selectAll("*").remove();
+    const permanentMessagesRef = ref(db, 'permanent_messages');
+    const todayHawaiiStart = getStartOfTodayHawaii();
+    
+    const queryConstraints = [orderByChild('timestamp'), startAt(todayHawaiiStart)];
+    onChildAdded(query(permanentMessagesRef, ...queryConstraints), (snapshot) => {
+        if (!snapshot.exists()) return;
+        
+        const data = snapshot.val();
+        if (!data || !data.geohash) return;
+
+        const dotId = `permanent-${snapshot.key}`;
+        if (d3.select(`#${dotId}`).empty()) {
+            const coords = decodeGeohash(data.geohash);
+            const [x, y] = projection([coords.lng, coords.lat]);
+            if (!isNaN(x) && !isNaN(y)) {
+                permanentDotLayer.append("circle")
+                    .attr("id", dotId)
+                    .datum({lng: coords.lng, lat: coords.lat})
+                    .attr("class", "dot-permanent")
+                    .attr("cx", x)
+                    .attr("cy", y)
+                    .attr("r", 1.5);
+            }
+        }
+    });
+  }
 
 
   // --- Event Listeners and Initializers ---
-  document.getElementById('msg-0').addEventListener('click', (event) => sendMessage(0, event.target));
-  document.getElementById('msg-1').addEventListener('click', (event) => sendMessage(1, event.target));
-  document.getElementById('msg-2').addEventListener('click', (event) => sendMessage(2, event.target));
-  document.getElementById('msg-3').addEventListener('click', (event) => sendMessage(3, event.target));
+  document.getElementById('msg-0').addEventListener('click', (event) => sendMessage(0, event.currentTarget));
+  document.getElementById('msg-1').addEventListener('click', (event) => sendMessage(1, event.currentTarget));
+  document.getElementById('msg-2').addEventListener('click', (event) => sendMessage(2, event.currentTarget));
+  document.getElementById('msg-3').addEventListener('click', (event) => sendMessage(3, event.currentTarget));
 
   const messagesRef = ref(db, 'messages');
   const recentMessagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(300));
@@ -377,7 +392,9 @@ document.addEventListener('DOMContentLoaded', () => {
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(geoData => {
     worldData = topojson.feature(geoData, geoData.objects.countries);
     setupAndRenderMap();
-    hereForYouFeature.init();
+    checkAndResetDailyData();
+    checkIfUnlocked();
+    listenForPermanentDots();
     renderLoop();
   }).catch(err => {
     console.error("Could not load map data:", err);
@@ -386,17 +403,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.addEventListener("resize", debounce(setupAndRenderMap, CONFIG.RESIZE_DEBOUNCE));
 
-  // --- UI Event Handlers ---
+  // --- UI Elements (Modal, Theme, Menu) ---
+  const modal = document.getElementById('modal');
+  const modalClose = document.getElementById('modalClose');
+  const toggleThemeButton = document.getElementById('toggleTheme');
+  const hamburger = document.getElementById('hamburgerMenu');
+  const menuDropdown = document.getElementById('menuDropdown');
+  const aboutMenu = document.getElementById('aboutMenu');
+
+  function hideModal() {
+    modal.classList.remove('visible');
+  }
   modalClose.addEventListener('click', hideModal);
   modal.addEventListener('click', (e) => {
     if (e.target === modal) hideModal();
   });
 
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+    setTimeout(setupAndRenderMap, 50); 
+  }
   toggleThemeButton.addEventListener('click', () => {
     const current = document.documentElement.getAttribute("data-theme") || "light";
     applyTheme(current === "dark" ? "light" : "dark");
   });
 
+  function closeMenuDropdown() {
+    menuDropdown.style.display = 'none';
+    hamburger.setAttribute('aria-expanded', 'false');
+  }
   hamburger.addEventListener('click', () => {
     const isExpanded = hamburger.getAttribute('aria-expanded') === 'true';
     if (isExpanded) {
@@ -408,6 +444,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  function handleMenuKeydown(e) {
+    if (e.key === 'Escape') return closeMenuDropdown();
+    if (e.key === 'Tab' && document.activeElement === aboutMenu) {
+        hamburger.focus();
+        e.preventDefault();
+    }
+  }
   menuDropdown.addEventListener('keydown', handleMenuKeydown);
   document.addEventListener('click', e => {
     if (!menuDropdown.contains(e.target) && e.target !== hamburger) closeMenuDropdown();
@@ -422,40 +465,38 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape' && modal.classList.contains('visible')) hideModal();
   });
 
-  // --- UI Helper Functions ---
-  function hideModal() {
-    modal.classList.remove('visible');
-  }
-
-  function applyTheme(theme) {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-    setTimeout(setupAndRenderMap, 50); 
-  }
-
-  function closeMenuDropdown() {
-    menuDropdown.style.display = 'none';
-    hamburger.setAttribute('aria-expanded', 'false');
-  }
-
-  function handleMenuKeydown(e) {
-    if (e.key === 'Escape') return closeMenuDropdown();
-    if (e.key === 'Tab' && document.activeElement === aboutMenu) {
-        hamburger.focus();
-        e.preventDefault();
+  function showModal(title, message) {
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalMessage = document.getElementById('modalMessage');
+    if (modal && modalTitle && modalMessage) {
+      modalTitle.textContent = title;
+      modalMessage.innerHTML = message;
+      modal.classList.add('visible');
     }
   }
 
-  function showModal(title, message) {
-    modalTitle.textContent = title;
-    modalMessage.innerHTML = message;
-    modal.classList.add('visible');
+  function handleGeolocationError(error) {
+    switch(error.code) {
+      case error.PERMISSION_DENIED:
+        showModal('Location Blocked', "Your browser has blocked location access.<br><br>To display your dot on the map, please enable location in your browser or system settings.");
+        break;
+      case error.POSITION_UNAVAILABLE:
+        showModal('Location Unavailable', "Your location could not be determined. Please ensure location services are enabled and you have a clear signal.");
+        break;
+      case error.TIMEOUT:
+        showModal('Location Timeout', "Could not get your location in time. Please check your connection and try again.");
+        break;
+      default:
+        showModal('Location Error', "An unknown error occurred while trying to get your location.");
+        break;
+    }
   }
 
-  function showFirebaseError(error) {
+  function showFirebaseError(error, context) {
     const userMessage = "An unexpected error occurred. Our team will work on a fix. Please try again later.";
     showModal('Error', userMessage);
-    console.error("Firebase Error Details:", error);
+    console.error(`Firebase Error (${context}):`, error);
   }
 
 });

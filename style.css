@@ -64,6 +64,10 @@ html, body {
 }
 .buttons button {
   width: 150px;
+  position: relative; /* Needed for loader positioning */
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 .button-group {
   display: flex;
@@ -107,13 +111,12 @@ html, body {
   .buttons button {
     width: 150px;
   }
-  /* Here For You button spanning two columns in portrait */
   #hereForYouContainer {
-    grid-column: 1 / -1; /* Span all columns */
+    grid-column: 1 / -1;
     justify-content: center;
   }
   #hereForYouButton {
-    width: 100%; /* Full width of the container */
+    width: 100%;
   }
 }
 
@@ -146,10 +149,9 @@ html, body {
     width: auto;
     padding: 10px 15px;
   }
-  /* Positioning for Here For You button in landscape */
   #hereForYouContainer {
     position: absolute;
-    bottom: 93px; /* Position it above the other buttons */
+    bottom: 93px;
     left: 0;
     width: auto;
   }
@@ -178,6 +180,41 @@ button:disabled {
   opacity: 0.7; 
   transform: translateY(0);
 }
+
+/* --- Loading Spinner Styles (Updated) --- */
+.loader {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  animation: rotation 1s linear infinite;
+}
+.btn-here .loader {
+  border-color: var(--bg);
+  border-bottom-color: transparent;
+}
+button.loading .loader {
+  display: block;
+}
+button.loading .button-text {
+  visibility: hidden;
+  opacity: 0;
+}
+/* FIX: Swapped transform order to translate first, then rotate */
+@keyframes rotation {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
 
 #toggleTheme {
   position: absolute;
