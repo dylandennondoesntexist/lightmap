@@ -15,10 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
     FADE_OUT_DURATION: 5000,
     MESSAGE_COOLDOWN_DEFAULT: 5000,
     MESSAGE_COOLDOWN_INITIAL: 100,
-    INITIAL_PRESS_LIMIT: 10,
+    INITIAL_PRESS_LIMIT: 20,
     GEOLOCATION_TIMEOUT: 10000,
     RESIZE_DEBOUNCE: 150,
-    UNLOCK_COUNT: 1 // How many clicks per button to unlock
+    UNLOCK_COUNT: 1, // How many clicks per button to unlock
+    PERMANENT_DOT_WINDOW_MS: 24 * 60 * 60 * 1000, // 24 hours
   };
 
   // --- Local Storage Keys ---
@@ -163,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
         button.classList.remove('loading');
         buttonText.textContent = "Displayed!";
         incrementButtonClick(colorIndex);
-        localStorage.setItem(KEYS.TOTAL_PRESSES, totalPresses + 1); // Increment total presses
+        localStorage.setItem(KEYS.TOTAL_PRESSES, totalPresses + 1);
         setTimeout(() => {
           buttonText.textContent = originalButtonText;
           buttons.forEach(btn => btn.disabled = false);
@@ -180,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
       button.classList.remove('loading');
       buttonText.textContent = originalButtonText;
       buttons.forEach(btn => btn.disabled = false);
-    }, { enableHighAccuracy: true, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
+    }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
   }
 
   // --- Animation Render Loop for temporary dots ---
@@ -264,24 +265,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const hereForYouContainer = document.getElementById('hereForYouContainer');
   const hereForYouButton = document.getElementById('hereForYouButton');
 
-  function getStartOfTodayHawaii() {
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth();
-    const day = now.getUTCDate();
-    // Create a date object for midnight UTC on the current day
-    const todayUTC = new Date(Date.UTC(year, month, day, 0, 0, 0));
-    // Hawaii Standard Time (HST) is UTC-10. To get midnight in HST, we find midnight
-    // in the UTC timezone and then add 10 hours to it.
-    todayUTC.setUTCHours(10);
-    return todayUTC.getTime();
+  function getStartOfTodayLocal() {
+    const now = new Date(); // Uses the user's local time
+    now.setHours(0, 0, 0, 0); // Set to midnight this morning, local time
+    return now.getTime();
   }
 
   function checkAndResetDailyData() {
-    const todayHawaiiStart = getStartOfTodayHawaii();
+    const todayLocalStart = getStartOfTodayLocal();
     const lastPressedData = JSON.parse(localStorage.getItem(KEYS.HERE_FOR_YOU_PRESSED));
 
-    if (lastPressedData && lastPressedData.timestamp < todayHawaiiStart) {
+    if (lastPressedData && lastPressedData.timestamp < todayLocalStart) {
       localStorage.removeItem(KEYS.BUTTON_COUNTS);
       localStorage.removeItem(KEYS.HERE_FOR_YOU_PRESSED);
       localStorage.removeItem(KEYS.TOTAL_PRESSES);
@@ -298,9 +292,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function checkIfUnlocked(currentCounts) {
     const counts = currentCounts || JSON.parse(localStorage.getItem(KEYS.BUTTON_COUNTS)) || [0, 0, 0, 0];
     const lastPressedData = JSON.parse(localStorage.getItem(KEYS.HERE_FOR_YOU_PRESSED));
-    const todayHawaiiStart = getStartOfTodayHawaii();
+    const todayLocalStart = getStartOfTodayLocal();
 
-    if(lastPressedData && lastPressedData.timestamp >= todayHawaiiStart) {
+    if(lastPressedData && lastPressedData.timestamp >= todayLocalStart) {
         return;
     }
 
@@ -324,7 +318,8 @@ document.addEventListener('DOMContentLoaded', () => {
         timestamp: serverTimestamp(),
         type: 'permanent'
       }).then(() => {
-        const pressData = { timestamp: Date.now() };
+        // Use local time for the daily reset check
+        const pressData = { timestamp: new Date().getTime() };
         localStorage.setItem(KEYS.HERE_FOR_YOU_PRESSED, JSON.stringify(pressData));
         
         hereForYouButton.classList.remove('loading');
@@ -346,15 +341,15 @@ document.addEventListener('DOMContentLoaded', () => {
       hereForYouButton.classList.remove('loading');
       buttonText.textContent = originalButtonText;
       hereForYouButton.disabled = false;
-    }, { enableHighAccuracy: true, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
+    }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT });
   });
 
   function listenForPermanentDots() {
     permanentDotLayer.selectAll("*").remove();
     const permanentMessagesRef = ref(db, 'permanent_messages');
-    const todayHawaiiStart = getStartOfTodayHawaii();
+    const cutoff = (Date.now() + serverTimeOffset) - CONFIG.PERMANENT_DOT_WINDOW_MS;
     
-    const queryConstraints = [orderByChild('timestamp'), startAt(todayHawaiiStart)];
+    const queryConstraints = [orderByChild('timestamp'), startAt(cutoff)];
     onChildAdded(query(permanentMessagesRef, ...queryConstraints), (snapshot) => {
         if (!snapshot.exists()) return;
         
