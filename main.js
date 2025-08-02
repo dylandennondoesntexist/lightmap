@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
       button.classList.remove('loading');
       buttonText.textContent = originalButtonText;
       buttons.forEach(btn => btn.disabled = false);
-    }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
+    }, { enableHighAccuracy: true, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
   }
 
   // --- Animation Render Loop for temporary dots ---
@@ -341,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
       hereForYouButton.classList.remove('loading');
       buttonText.textContent = originalButtonText;
       hereForYouButton.disabled = false;
-    }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT });
+    }, { enableHighAccuracy: true, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
   });
 
   function listenForPermanentDots() {
