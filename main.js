@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Geohashing ---
   const BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz";
-  function geohash(lat, lng, precision = 5) {
+  function geohash(lat, lng, precision = 4) {
     let latRange = [-90, 90], lngRange = [-180, 180], hash = "", bit = 0, ch = 0, isEven = true;
     while (hash.length < precision) {
       const mid = isEven ? (lngRange[0] + lngRange[1]) / 2 : (latRange[0] + latRange[1]) / 2;
@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.geolocation.getCurrentPosition(position => {
       lastMessageTime = now;
       const { latitude, longitude } = position.coords;
-      const hash = geohash(latitude, longitude, 6);
+      const hash = geohash(latitude, longitude, 4);
       push(ref(db, 'messages'), {
         geohash: hash,
         color: colors[colorIndex],
@@ -312,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navigator.geolocation.getCurrentPosition(position => {
       const { latitude, longitude } = position.coords;
-      const hash = geohash(latitude, longitude, 6);
+      const hash = geohash(latitude, longitude, 4);
       push(ref(db, 'permanent_messages'), {
         geohash: hash,
         timestamp: serverTimestamp(),
@@ -453,7 +453,8 @@ document.addEventListener('DOMContentLoaded', () => {
   
   aboutMenu.addEventListener('click', () => {
     closeMenuDropdown();
-    showModal('About', "Inspired by Ho'oponopono & The Pitt. <br><br> Press a button to display a dot on the map.               Location is converted to an approximate 5-character geohash. No personal identifiers are stored or shared.");
+    showModal('About', "Inspired by Ho'oponopono & The Pitt. <br><br> Press a button to display a dot on the map. \
+      Location is converted to an approximate 4-character geohash. No personal identifiers are stored or shared.");
   });
 
   document.addEventListener('keydown', e => {
