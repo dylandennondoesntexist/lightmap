@@ -181,7 +181,7 @@ button:disabled {
   transform: translateY(0);
 }
 
-/* --- Loading Spinner Styles (Updated) --- */
+/* Loading Spinner Styles */
 .loader {
   display: none;
   position: absolute;
@@ -205,7 +205,7 @@ button.loading .button-text {
   visibility: hidden;
   opacity: 0;
 }
-/* FIX: Swapped transform order to translate first, then rotate */
+/* Swapped transform order to translate first, then rotate */
 @keyframes rotation {
   from {
     transform: translate(-50%, -50%) rotate(0deg);
