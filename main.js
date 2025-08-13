@@ -1,6 +1,7 @@
 // Import Firebase modular functions
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, push, onChildAdded, query, orderByChild, limitToLast, serverTimestamp, onValue, get, startAt } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, push, onChildAdded, query, orderByChild, limitToLast, serverTimestamp, onValue, get, startAt, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 // Import config as a module
 import { firebaseConfig } from "./config.js";
@@ -13,9 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     DOT_LIFESPAN: 10000,
     FADE_IN_DURATION: 2000,
     FADE_OUT_DURATION: 5000,
-    MESSAGE_COOLDOWN_DEFAULT: 5000,
-    MESSAGE_COOLDOWN_INITIAL: 100,
-    INITIAL_PRESS_LIMIT: 20,
+    MESSAGE_COOLDOWN: 1000, // Universal cooldown for all messages
     GEOLOCATION_TIMEOUT: 10000,
     RESIZE_DEBOUNCE: 150,
     UNLOCK_COUNT: 1, // How many clicks per button to unlock
@@ -26,7 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const KEYS = {
     BUTTON_COUNTS: 'ephemeralButtonCounts',
     HERE_FOR_YOU_PRESSED: 'ephemeralhereForYouPressed',
-    TOTAL_PRESSES: 'ephemeralTotalPresses'
   };
 
   // --- Utility Functions ---
@@ -50,6 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
+  const auth = getAuth(app);
+  let currentUser = null; // To hold the authenticated user
 
   let serverTimeOffset = 0;
   onValue(ref(db, '.info/serverTimeOffset'), (snap) => {
@@ -131,16 +131,19 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastMessageTime = 0;
 
   function sendMessage(colorIndex, button) {
-    const now = Date.now();
-    const totalPresses = parseInt(localStorage.getItem(KEYS.TOTAL_PRESSES) || '0', 10);
-    const currentCooldown = totalPresses < CONFIG.INITIAL_PRESS_LIMIT ? CONFIG.MESSAGE_COOLDOWN_INITIAL : CONFIG.MESSAGE_COOLDOWN_DEFAULT;
+    if (!currentUser) {
+        showModal('Error', 'Not connected. Please wait a moment and try again.');
+        return;
+    }
 
-    if (now - lastMessageTime < currentCooldown) {
-      const timeLeft = Math.ceil((currentCooldown - (now - lastMessageTime)) / 1000);
+    // Simplified cooldown logic
+    if (Date.now() - lastMessageTime < CONFIG.MESSAGE_COOLDOWN) {
+      const timeLeft = Math.ceil((CONFIG.MESSAGE_COOLDOWN - (Date.now() - lastMessageTime)) / 1000);
       const unit = timeLeft === 1 ? "second" : "seconds";
-      showModal('Cooldown', `Please wait ${timeLeft} ${unit}.`);
+      showModal('Cooldown', `Please wait ${timeLeft > 0 ? timeLeft : 1} ${unit}.`);
       return;
     }
+
     if (!navigator.geolocation) {
       showModal('Error', "Geolocation is not supported by your browser.");
       return;
@@ -153,29 +156,40 @@ document.addEventListener('DOMContentLoaded', () => {
     button.classList.add('loading');
 
     navigator.geolocation.getCurrentPosition(position => {
-      lastMessageTime = now;
       const { latitude, longitude } = position.coords;
       const hash = geohash(latitude, longitude, 4);
-      push(ref(db, 'messages'), {
+      
+      const messageData = {
         geohash: hash,
         color: colors[colorIndex],
-        timestamp: serverTimestamp()
-      }).then(() => {
-        button.classList.remove('loading');
-        buttonText.textContent = "Displayed!";
-        incrementButtonClick(colorIndex);
-        localStorage.setItem(KEYS.TOTAL_PRESSES, totalPresses + 1);
-        setTimeout(() => {
-          buttonText.textContent = originalButtonText;
-          buttons.forEach(btn => btn.disabled = false);
-          button.blur();
-        }, 2000);
-      }).catch(error => {
-        showFirebaseError(error, "writing ephemeral message");
-        button.classList.remove('loading');
-        buttonText.textContent = originalButtonText;
-        buttons.forEach(btn => btn.disabled = false);
-      });
+        timestamp: serverTimestamp(),
+        uid: currentUser.uid
+      };
+
+      const messageRef = ref(db, 'messages');
+      const userTimestampRef = ref(db, `users/${currentUser.uid}/lastMessageTimestamp`);
+      
+      push(messageRef, messageData)
+        .then(() => {
+            return set(userTimestampRef, serverTimestamp());
+        })
+        .then(() => {
+            lastMessageTime = Date.now();
+            button.classList.remove('loading');
+            buttonText.textContent = "Displayed!";
+            incrementButtonClick(colorIndex);
+            setTimeout(() => {
+              buttonText.textContent = originalButtonText;
+              buttons.forEach(btn => btn.disabled = false);
+              button.blur();
+            }, 2000);
+        })
+        .catch(error => {
+            showFirebaseError(error, "writing ephemeral message");
+            button.classList.remove('loading');
+            buttonText.textContent = originalButtonText;
+            buttons.forEach(btn => btn.disabled = false);
+        });
     }, error => {
       handleGeolocationError(error);
       button.classList.remove('loading');
@@ -266,8 +280,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const hereForYouButton = document.getElementById('hereForYouButton');
 
   function getStartOfTodayLocal() {
-    const now = new Date(); // Uses the user's local time
-    now.setHours(0, 0, 0, 0); // Set to midnight this morning, local time
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
     return now.getTime();
   }
 
@@ -278,7 +292,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (lastPressedData && lastPressedData.timestamp < todayLocalStart) {
       localStorage.removeItem(KEYS.BUTTON_COUNTS);
       localStorage.removeItem(KEYS.HERE_FOR_YOU_PRESSED);
-      localStorage.removeItem(KEYS.TOTAL_PRESSES);
     }
   }
   
@@ -305,6 +318,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   hereForYouButton.addEventListener('click', () => {
+    if (!currentUser) {
+        showModal('Error', 'Not connected. Please wait a moment and try again.');
+        return;
+    }
+    
     hereForYouButton.disabled = true;
     const buttonText = hereForYouButton.querySelector('.button-text');
     const originalButtonText = buttonText.textContent;
@@ -313,29 +331,40 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.geolocation.getCurrentPosition(position => {
       const { latitude, longitude } = position.coords;
       const hash = geohash(latitude, longitude, 4);
-      push(ref(db, 'permanent_messages'), {
+      
+      const messageData = {
         geohash: hash,
         timestamp: serverTimestamp(),
-        type: 'permanent'
-      }).then(() => {
-        // Use local time for the daily reset check
-        const pressData = { timestamp: new Date().getTime() };
-        localStorage.setItem(KEYS.HERE_FOR_YOU_PRESSED, JSON.stringify(pressData));
-        
-        hereForYouButton.classList.remove('loading');
-        buttonText.textContent = "Displayed!";
+        type: 'permanent',
+        uid: currentUser.uid
+      };
 
-        setTimeout(() => {
-          hereForYouContainer.classList.add('hidden');
-          buttonText.textContent = originalButtonText;
-          hereForYouButton.disabled = false;
-        }, 2000);
-      }).catch(error => {
-        showFirebaseError(error, "writing permanent message");
-        hereForYouButton.classList.remove('loading');
-        buttonText.textContent = originalButtonText;
-        hereForYouButton.disabled = false;
-      });
+      const messageRef = ref(db, 'permanent_messages');
+      const userTimestampRef = ref(db, `users/${currentUser.uid}/lastMessageTimestamp`);
+
+      push(messageRef, messageData)
+        .then(() => {
+            return set(userTimestampRef, serverTimestamp());
+        })
+        .then(() => {
+            const pressData = { timestamp: new Date().getTime() };
+            localStorage.setItem(KEYS.HERE_FOR_YOU_PRESSED, JSON.stringify(pressData));
+            
+            hereForYouButton.classList.remove('loading');
+            buttonText.textContent = "Displayed!";
+
+            setTimeout(() => {
+              hereForYouContainer.classList.add('hidden');
+              buttonText.textContent = originalButtonText;
+              hereForYouButton.disabled = false;
+            }, 2000);
+        })
+        .catch(error => {
+            showFirebaseError(error, "writing permanent message");
+            hereForYouButton.classList.remove('loading');
+            buttonText.textContent = originalButtonText;
+            hereForYouButton.disabled = false;
+        });
     }, error => {
       handleGeolocationError(error);
       hereForYouButton.classList.remove('loading');
@@ -372,6 +401,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
   }
+
+  // --- Authentication ---
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      currentUser = user;
+    } else {
+      currentUser = null;
+    }
+  });
+
+  signInAnonymously(auth).catch((error) => {
+    console.error("Anonymous sign-in failed:", error);
+    showModal('Connection Error', 'Could not connect to the service. Please refresh the page.');
+  });
 
 
   // --- Event Listeners and Initializers ---
