@@ -51,9 +51,10 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# IDEs
+# IDEs and local agent tooling
 .idea/
 .vscode/
+.claude/
 
 # Firebase cache
 .firebase/
