@@ -1,5 +1,5 @@
-# Firebase config (private)
-config.js
+# Local Firebase web configuration
+**/config.js
 
 # Logs
 *.log
@@ -50,6 +50,10 @@ node_modules/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# IDEs
+.idea/
+.vscode/
 
 # Firebase cache
 .firebase/

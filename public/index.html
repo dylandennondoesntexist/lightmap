@@ -1,77 +1,73 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script>
-    // Set theme before CSS loads to prevent white flash
-    (function() {
-      var theme = localStorage.getItem("theme");
-      if (!theme) {
-        theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? "dark" : "light";
-      }
-      document.documentElement.setAttribute("data-theme", theme);
-    })();
-  </script>
   <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>A minimalist connection map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Share a small, anonymous sign of connection on a real-time world map." />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)" />
+  <title>Here For You — a minimalist connection map</title>
   <link rel="icon" type="image/png" href="favicon.png" />
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="style.css">
-  
-  <script src="https://d3js.org/d3.v7.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/topojson@3" defer></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js" defer></script>
   <script type="module" src="main.js" defer></script>
 
 </head>
 <body>
-  <!-- Hamburger menu with aria-expanded attribute for accessibility -->
-  <button class="hamburger" id="hamburgerMenu" aria-label="Open menu" aria-expanded="false" tabindex="0">
+  <button class="hamburger" id="hamburgerMenu" aria-label="Open menu" aria-expanded="false" aria-controls="menuDropdown">
     <svg class="hamburger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <line x1="4" y1="7" x2="20" y2="7"></line>
       <line x1="4" y1="12" x2="20" y2="12"></line>
       <line x1="4" y1="17" x2="20" y2="17"></line>
     </svg>
   </button>
-  <div class="menu-dropdown" id="menuDropdown" role="menu" aria-label="Main menu">
-    <button class="menu-item" id="aboutMenu" role="menuitem" tabindex="-1" aria-label="About">About</button>
+  <div class="menu-dropdown" id="menuDropdown" role="menu" aria-label="Main menu" hidden>
+    <button class="menu-item" id="aboutMenu" role="menuitem" tabindex="-1">About</button>
   </div>
   <!-- Button-group wrappers for flexible positioning -->
   <div class="buttons">
     <!-- Hidden button container -->
     <div id="hereForYouContainer" class="hidden">
-      <button id="hereForYouButton" class="btn-here" aria-label="Send 'Here for you' message">
+      <button id="hereForYouButton" class="btn-here" aria-label="Send 'Here for you' message" disabled>
         <span class="button-text">Here for you</span>
-        <div class="loader"></div>
+        <span class="loader" aria-hidden="true"></span>
       </button>
     </div>
     <div class="button-group left-group">
-      <button id="msg-0" class="btn-love" aria-label="Send 'I love you' message">
+      <button id="msg-0" class="btn-love" aria-label="Send 'I love you' message" disabled>
         <span class="button-text">I love you</span>
-        <div class="loader"></div>
+        <span class="loader" aria-hidden="true"></span>
       </button>
-      <button id="msg-1" class="btn-thank-you" aria-label="Send 'Thank you' message">
+      <button id="msg-1" class="btn-thank-you" aria-label="Send 'Thank you' message" disabled>
         <span class="button-text">Thank you</span>
-        <div class="loader"></div>
+        <span class="loader" aria-hidden="true"></span>
       </button>
     </div>
     <div class="button-group right-group">
-      <button id="msg-2" class="btn-forgive-you" aria-label="Send 'I forgive you' message">
+      <button id="msg-2" class="btn-forgive-you" aria-label="Send 'I forgive you' message" disabled>
         <span class="button-text">I forgive you</span>
-        <div class="loader"></div>
+        <span class="loader" aria-hidden="true"></span>
       </button>
-      <button id="msg-3" class="btn-forgive-me" aria-label="Send 'Please forgive me' message">
+      <button id="msg-3" class="btn-forgive-me" aria-label="Send 'Please forgive me' message" disabled>
         <span class="button-text">Please forgive me</span>
-        <div class="loader"></div>
+        <span class="loader" aria-hidden="true"></span>
       </button>
     </div>
   </div>
+  <p id="capNotice" class="cap-notice" hidden>Today's messages have all been shared. The map opens again tomorrow.</p>
   <!-- Theme toggle with SVG icons inside -->
   <button id="toggleTheme" aria-label="Toggle dark/light mode">
     <svg class="sun-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><g><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></g></svg>
     <svg class="moon-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
   </button>
-  <svg id="map"></svg>
-  <div id="modal" class="modal-overlay">
+  <svg id="map" role="img" aria-label="World map showing recent anonymous messages">
+    <title>Recent messages around the world</title>
+  </svg>
+  <p id="status" class="visually-hidden" aria-live="polite"></p>
+  <div id="modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalMessage" aria-hidden="true">
     <div class="modal-content">
       <h3 id="modalTitle"></h3>
       <p id="modalMessage"></p>

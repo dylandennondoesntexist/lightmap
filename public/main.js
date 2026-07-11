@@ -1,13 +1,26 @@
-// Import Firebase modular functions
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, push, onChildAdded, query, orderByChild, limitToLast, serverTimestamp, onValue, get, startAt, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app-check.js";
+import { getDatabase, ref, push, onChildAdded, query, orderByChild, limitToLast, serverTimestamp, onValue, startAt, update, get, increment } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 
-// Import config as a module
-import { firebaseConfig } from "./config.js";
+import * as clientConfig from "./config.js";
+import { decodeGeohash, encodeGeohash } from "./geohash.js";
+
+const { firebaseConfig, appCheckSiteKey } = clientConfig;
 
 // --- Wrap all logic in a DOMContentLoaded listener ---
 document.addEventListener('DOMContentLoaded', () => {
+
+  const modal = document.getElementById('modal');
+  const modalClose = document.getElementById('modalClose');
+  const buttonsContainer = document.querySelector('.buttons');
+  const capNotice = document.getElementById('capNotice');
+  const toggleThemeButton = document.getElementById('toggleTheme');
+  const hamburger = document.getElementById('hamburgerMenu');
+  const menuDropdown = document.getElementById('menuDropdown');
+  const aboutMenu = document.getElementById('aboutMenu');
+  const status = document.getElementById('status');
+  let elementBeforeModal = null;
 
   // --- Configuration Constants ---
   const CONFIG = {
@@ -19,6 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
     RESIZE_DEBOUNCE: 150,
     UNLOCK_COUNT: 1, // How many clicks per button to unlock
     PERMANENT_DOT_WINDOW_MS: 24 * 60 * 60 * 1000, // 24 hours
+    PERMANENT_DOT_MAX: 2000, // Bounds what one visitor downloads, whatever the day held
+    DAILY_GLOBAL_CAP: 25000, // Must match the stats/daily count limit in database.rules.json
   };
 
   // --- Local Storage Keys ---
@@ -27,7 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
     HERE_FOR_YOU_PRESSED: 'ephemeralhereForYouPressed',
   };
 
-  // --- Utility Functions ---
   function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -40,6 +54,16 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  function readStoredJson(key, fallback) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key));
+      return value ?? fallback;
+    } catch {
+      localStorage.removeItem(key);
+      return fallback;
+    }
+  }
+
   // --- App Initialization ---
   if (!firebaseConfig) {
     showModal('Error', 'Firebase configuration is missing or invalid in config.js.');
@@ -47,6 +71,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const app = initializeApp(firebaseConfig);
+  if (appCheckSiteKey) {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
   const db = getDatabase(app);
   const auth = getAuth(app);
   let currentUser = null; // To hold the authenticated user
@@ -55,6 +85,83 @@ document.addEventListener('DOMContentLoaded', () => {
   onValue(ref(db, '.info/serverTimeOffset'), (snap) => {
     serverTimeOffset = snap.val() || 0;
   });
+
+  // --- Global Daily Write Cap ---
+  // Mirrors the counter that database.rules.json enforces at stats/daily.
+  // Every press writes its message and a counter increment in one atomic
+  // update; once the counter reaches DAILY_GLOBAL_CAP the rules reject new
+  // messages until the next UTC day. The map stays readable throughout.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const statsRef = ref(db, 'stats/daily');
+  let latestDailyStats = null;
+  let capWasReached = false;
+
+  function serverNow() {
+    return Date.now() + serverTimeOffset;
+  }
+
+  function utcDayStart(ms) {
+    return ms - (ms % DAY_MS);
+  }
+
+  function isCapReached() {
+    return latestDailyStats !== null
+      && latestDailyStats.day === utcDayStart(serverNow())
+      && latestDailyStats.count >= CONFIG.DAILY_GLOBAL_CAP;
+  }
+
+  function updateCapUi() {
+    const capped = isCapReached();
+    buttonsContainer.hidden = capped;
+    capNotice.hidden = !capped;
+    if (capped && !capWasReached) {
+      announceStatus(capNotice.textContent);
+    }
+    capWasReached = capped;
+  }
+
+  function scheduleCapRefreshAtUtcMidnight() {
+    const msUntilNextUtcDay = utcDayStart(serverNow()) + DAY_MS - serverNow();
+    setTimeout(() => {
+      updateCapUi();
+      scheduleCapRefreshAtUtcMidnight();
+    }, msUntilNextUtcDay + 1000);
+  }
+
+  function showCapModal() {
+    showModal('Resting', "Today's messages have all been shared. The map will accept new ones after midnight UTC.");
+  }
+
+  function buildCounterWrite() {
+    const todayMs = utcDayStart(serverNow());
+    if (latestDailyStats && latestDailyStats.day === todayMs) {
+      return { day: todayMs, count: increment(1) };
+    }
+    return { day: todayMs, count: 1 };
+  }
+
+  // Writes the message and the counter in a single atomic multi-path update,
+  // so a press is still one network round trip. A denial is retried once with
+  // a fresh counter read, which covers UTC-rollover and cap races.
+  async function sendCountedMessage(path, messageData) {
+    const write = () => update(ref(db), {
+      [`${path}/${push(ref(db, path)).key}`]: messageData,
+      'stats/daily': buildCounterWrite(),
+    });
+
+    try {
+      await write();
+    } catch {
+      latestDailyStats = (await get(statsRef)).val();
+      updateCapUi();
+      if (isCapReached()) {
+        const capError = new Error('The daily message cap has been reached.');
+        capError.code = 'daily-cap';
+        throw capError;
+      }
+      await write();
+    }
+  }
 
   // --- D3 Map Setup ---
   const svg = d3.select("#map");
@@ -65,40 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const path = d3.geoPath().projection(projection);
   let worldData;
   let activeDots = [];
-
-  // --- Geohashing ---
-  const BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz";
-  function geohash(lat, lng, precision = 4) {
-    let latRange = [-90, 90], lngRange = [-180, 180], hash = "", bit = 0, ch = 0, isEven = true;
-    while (hash.length < precision) {
-      const mid = isEven ? (lngRange[0] + lngRange[1]) / 2 : (latRange[0] + latRange[1]) / 2;
-      if (isEven) {
-        if (lng >= mid) { ch |= (1 << (4 - bit)); lngRange[0] = mid; } else { lngRange[1] = mid; }
-      } else {
-        if (lat >= mid) { ch |= (1 << (4 - bit)); latRange[0] = mid; } else { latRange[1] = mid; }
-      }
-      isEven = !isEven;
-      if (++bit === 5) { hash += BASE32[ch]; bit = 0; ch = 0; }
-    }
-    return hash;
-  }
-  function decodeGeohash(hash) {
-    let latRange = [-90, 90], lngRange = [-180, 180], isEven = true;
-    for (let i = 0; i < hash.length; i++) {
-      const ch = BASE32.indexOf(hash[i]);
-      for (let bit = 4; bit >= 0; bit--) {
-        if (isEven) {
-          const mid = (lngRange[0] + lngRange[1]) / 2;
-          if (ch & (1 << bit)) { lngRange[0] = mid; } else { lngRange[1] = mid; }
-        } else {
-          const mid = (latRange[0] + latRange[1]) / 2;
-          if (ch & (1 << bit)) { latRange[0] = mid; } else { latRange[1] = mid; } 
-        }
-        isEven = !isEven;
-      }
-    }
-    return { lat: (latRange[0] + latRange[1]) / 2, lng: (lngRange[0] + lngRange[1]) / 2 };
-  }
+  let animationFrameId = null;
 
   // --- Map Rendering ---
   function setupAndRenderMap() {
@@ -136,6 +210,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    if (isCapReached()) {
+      updateCapUi();
+      showCapModal();
+      return;
+    }
+
     // Simplified cooldown logic
     if (Date.now() - lastMessageTime < CONFIG.MESSAGE_COOLDOWN) {
       const timeLeft = Math.ceil((CONFIG.MESSAGE_COOLDOWN - (Date.now() - lastMessageTime)) / 1000);
@@ -157,26 +237,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navigator.geolocation.getCurrentPosition(position => {
       const { latitude, longitude } = position.coords;
-      const hash = geohash(latitude, longitude, 4);
+      const hash = encodeGeohash(latitude, longitude);
       
       const messageData = {
         geohash: hash,
         color: colors[colorIndex],
         timestamp: serverTimestamp(),
-        uid: currentUser.uid
       };
 
-      const messageRef = ref(db, 'messages');
-      const userTimestampRef = ref(db, `users/${currentUser.uid}/lastMessageTimestamp`);
-      
-      push(messageRef, messageData)
-        .then(() => {
-            return set(userTimestampRef, serverTimestamp());
-        })
+      sendCountedMessage('messages', messageData)
         .then(() => {
             lastMessageTime = Date.now();
             button.classList.remove('loading');
             buttonText.textContent = "Displayed!";
+            announceStatus(`${originalButtonText} displayed on the map.`);
             incrementButtonClick(colorIndex);
             setTimeout(() => {
               buttonText.textContent = originalButtonText;
@@ -185,7 +259,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 2000);
         })
         .catch(error => {
-            showFirebaseError(error, "writing ephemeral message");
+            if (error && error.code === 'daily-cap') {
+              showCapModal();
+            } else {
+              showFirebaseError(error, "writing ephemeral message");
+            }
             button.classList.remove('loading');
             buttonText.textContent = originalButtonText;
             buttons.forEach(btn => btn.disabled = false);
@@ -195,7 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
       button.classList.remove('loading');
       buttonText.textContent = originalButtonText;
       buttons.forEach(btn => btn.disabled = false);
-    }, { enableHighAccuracy: true, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
+    }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 300000 });
   }
 
   // --- Animation Render Loop for temporary dots ---
@@ -236,7 +314,17 @@ document.addEventListener('DOMContentLoaded', () => {
       activeDots = activeDots.filter(d => !dotsToRemove.includes(d.id));
     }
 
-    requestAnimationFrame(renderLoop);
+    if (activeDots.length > 0) {
+      animationFrameId = requestAnimationFrame(renderLoop);
+    } else {
+      animationFrameId = null;
+    }
+  }
+
+  function startRenderLoop() {
+    if (animationFrameId === null) {
+      animationFrameId = requestAnimationFrame(renderLoop);
+    }
   }
 
   function addNewDot(snapshot) {
@@ -254,6 +342,9 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const coords = decodeGeohash(hash);
+    if (!coords) {
+      return;
+    }
     const [x, y] = projection([coords.lng, coords.lat]);
     if (isNaN(x) || isNaN(y)) {
       return;
@@ -273,6 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .attr("fill", color)
       .attr("r", 0)
       .attr("fill-opacity", 0);
+    startRenderLoop();
   }
 
   // --- "Here For You" Feature Logic ---
@@ -287,7 +379,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function checkAndResetDailyData() {
     const todayLocalStart = getStartOfTodayLocal();
-    const lastPressedData = JSON.parse(localStorage.getItem(KEYS.HERE_FOR_YOU_PRESSED));
+    const lastPressedData = readStoredJson(KEYS.HERE_FOR_YOU_PRESSED, null);
 
     if (lastPressedData && lastPressedData.timestamp < todayLocalStart) {
       localStorage.removeItem(KEYS.BUTTON_COUNTS);
@@ -296,31 +388,47 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   function incrementButtonClick(index) {
-    let counts = JSON.parse(localStorage.getItem(KEYS.BUTTON_COUNTS)) || [0, 0, 0, 0];
+    const counts = readStoredJson(KEYS.BUTTON_COUNTS, [0, 0, 0, 0]);
+    if (!Array.isArray(counts) || counts.length !== colors.length) {
+      localStorage.removeItem(KEYS.BUTTON_COUNTS);
+      return;
+    }
     counts[index]++;
     localStorage.setItem(KEYS.BUTTON_COUNTS, JSON.stringify(counts));
     checkIfUnlocked(counts);
   }
 
   function checkIfUnlocked(currentCounts) {
-    const counts = currentCounts || JSON.parse(localStorage.getItem(KEYS.BUTTON_COUNTS)) || [0, 0, 0, 0];
-    const lastPressedData = JSON.parse(localStorage.getItem(KEYS.HERE_FOR_YOU_PRESSED));
+    const storedCounts = readStoredJson(KEYS.BUTTON_COUNTS, [0, 0, 0, 0]);
+    const counts = currentCounts || storedCounts;
+    const lastPressedData = readStoredJson(KEYS.HERE_FOR_YOU_PRESSED, null);
     const todayLocalStart = getStartOfTodayLocal();
 
     if(lastPressedData && lastPressedData.timestamp >= todayLocalStart) {
         return;
     }
 
-    const unlocked = counts.every(count => count >= CONFIG.UNLOCK_COUNT);
+    const unlocked = Array.isArray(counts) && counts.length === colors.length &&
+      counts.every(count => Number.isFinite(count) && count >= CONFIG.UNLOCK_COUNT);
     if (unlocked) {
       hereForYouContainer.classList.remove('hidden');
+      hereForYouButton.disabled = !currentUser;
     }
   }
 
   hereForYouButton.addEventListener('click', () => {
     if (!currentUser) {
         showModal('Error', 'Not connected. Please wait a moment and try again.');
-        return;
+      return;
+    }
+    if (isCapReached()) {
+      updateCapUi();
+      showCapModal();
+      return;
+    }
+    if (!navigator.geolocation) {
+      showModal('Error', "Geolocation is not supported by your browser.");
+      return;
     }
     
     hereForYouButton.disabled = true;
@@ -330,28 +438,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navigator.geolocation.getCurrentPosition(position => {
       const { latitude, longitude } = position.coords;
-      const hash = geohash(latitude, longitude, 4);
+      const hash = encodeGeohash(latitude, longitude);
       
       const messageData = {
         geohash: hash,
         timestamp: serverTimestamp(),
-        type: 'permanent',
-        uid: currentUser.uid
+        type: "permanent",
       };
 
-      const messageRef = ref(db, 'permanent_messages');
-      const userTimestampRef = ref(db, `users/${currentUser.uid}/lastMessageTimestamp`);
-
-      push(messageRef, messageData)
-        .then(() => {
-            return set(userTimestampRef, serverTimestamp());
-        })
+      sendCountedMessage('permanent_messages', messageData)
         .then(() => {
             const pressData = { timestamp: new Date().getTime() };
             localStorage.setItem(KEYS.HERE_FOR_YOU_PRESSED, JSON.stringify(pressData));
-            
+
             hereForYouButton.classList.remove('loading');
             buttonText.textContent = "Displayed!";
+            announceStatus("Here for you displayed on the map.");
 
             setTimeout(() => {
               hereForYouContainer.classList.add('hidden');
@@ -360,7 +462,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 2000);
         })
         .catch(error => {
-            showFirebaseError(error, "writing permanent message");
+            if (error && error.code === 'daily-cap') {
+              showCapModal();
+            } else {
+              showFirebaseError(error, "writing permanent message");
+            }
             hereForYouButton.classList.remove('loading');
             buttonText.textContent = originalButtonText;
             hereForYouButton.disabled = false;
@@ -370,7 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
       hereForYouButton.classList.remove('loading');
       buttonText.textContent = originalButtonText;
       hereForYouButton.disabled = false;
-    }, { enableHighAccuracy: true, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 20000 });
+    }, { enableHighAccuracy: false, timeout: CONFIG.GEOLOCATION_TIMEOUT, maximumAge: 300000 });
   });
 
   function listenForPermanentDots() {
@@ -378,7 +484,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const permanentMessagesRef = ref(db, 'permanent_messages');
     const cutoff = (Date.now() + serverTimeOffset) - CONFIG.PERMANENT_DOT_WINDOW_MS;
     
-    const queryConstraints = [orderByChild('timestamp'), startAt(cutoff)];
+    const queryConstraints = [orderByChild('timestamp'), startAt(cutoff), limitToLast(CONFIG.PERMANENT_DOT_MAX)];
     onChildAdded(query(permanentMessagesRef, ...queryConstraints), (snapshot) => {
         if (!snapshot.exists()) return;
         
@@ -388,6 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const dotId = `permanent-${snapshot.key}`;
         if (d3.select(`#${dotId}`).empty()) {
             const coords = decodeGeohash(data.geohash);
+            if (!coords) return;
             const [x, y] = projection([coords.lng, coords.lat]);
             if (!isNaN(x) && !isNaN(y)) {
                 permanentDotLayer.append("circle")
@@ -402,12 +509,44 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // --- Realtime listeners ---
+  // Reads require auth, so listeners are attached only after sign-in
+  // completes; a listener attached earlier would be cancelled by the server
+  // and never retried.
+  let realtimeListenersStarted = false;
+  function startRealtimeListeners() {
+    if (realtimeListenersStarted) return;
+    realtimeListenersStarted = true;
+
+    onValue(statsRef, (snapshot) => {
+      latestDailyStats = snapshot.val();
+      updateCapUi();
+    });
+
+    // Only dots young enough to display are worth downloading; without the
+    // startAt bound a new visitor would sync up to 300 already-expired
+    // messages just to discard them.
+    const liveCutoff = serverNow() - (CONFIG.DOT_LIFESPAN + 1000);
+    const recentMessagesQuery = query(ref(db, 'messages'), orderByChild('timestamp'), startAt(liveCutoff), limitToLast(300));
+    onChildAdded(recentMessagesQuery, addNewDot);
+
+    listenForPermanentDots();
+  }
+
   // --- Authentication ---
   onAuthStateChanged(auth, (user) => {
     if (user) {
       currentUser = user;
+      startRealtimeListeners();
+      document.querySelectorAll('.button-group button').forEach(button => {
+        button.disabled = false;
+      });
+      checkIfUnlocked();
     } else {
       currentUser = null;
+      document.querySelectorAll('.buttons button').forEach(button => {
+        button.disabled = true;
+      });
     }
   });
 
@@ -423,17 +562,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('msg-2').addEventListener('click', (event) => sendMessage(2, event.currentTarget));
   document.getElementById('msg-3').addEventListener('click', (event) => sendMessage(3, event.currentTarget));
 
-  const messagesRef = ref(db, 'messages');
-  const recentMessagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(300));
-  onChildAdded(recentMessagesQuery, addNewDot);
+  scheduleCapRefreshAtUtcMidnight();
 
-  d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(geoData => {
+  d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json").then(geoData => {
     worldData = topojson.feature(geoData, geoData.objects.countries);
     setupAndRenderMap();
     checkAndResetDailyData();
     checkIfUnlocked();
-    listenForPermanentDots();
-    renderLoop();
   }).catch(err => {
     console.error("Could not load map data:", err);
     showModal('Error', "Could not load map data. Please refresh the page.");
@@ -442,15 +577,18 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener("resize", debounce(setupAndRenderMap, CONFIG.RESIZE_DEBOUNCE));
 
   // --- UI Elements (Modal, Theme, Menu) ---
-  const modal = document.getElementById('modal');
-  const modalClose = document.getElementById('modalClose');
-  const toggleThemeButton = document.getElementById('toggleTheme');
-  const hamburger = document.getElementById('hamburgerMenu');
-  const menuDropdown = document.getElementById('menuDropdown');
-  const aboutMenu = document.getElementById('aboutMenu');
+  function announceStatus(message) {
+    status.textContent = "";
+    window.requestAnimationFrame(() => {
+      status.textContent = message;
+    });
+  }
 
   function hideModal() {
     modal.classList.remove('visible');
+    modal.setAttribute('aria-hidden', 'true');
+    elementBeforeModal?.focus();
+    elementBeforeModal = null;
   }
   modalClose.addEventListener('click', hideModal);
   modal.addEventListener('click', (e) => {
@@ -459,7 +597,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
+    try {
+      localStorage.setItem("theme", theme);
+    } catch {
+      // The theme still applies when storage is unavailable.
+    }
+    toggleThemeButton.setAttribute(
+      "aria-label",
+      theme === "dark" ? "Switch to light mode" : "Switch to dark mode",
+    );
     setTimeout(setupAndRenderMap, 50); 
   }
   toggleThemeButton.addEventListener('click', () => {
@@ -468,16 +614,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function closeMenuDropdown() {
-    menuDropdown.style.display = 'none';
+    menuDropdown.hidden = true;
     hamburger.setAttribute('aria-expanded', 'false');
+    hamburger.setAttribute('aria-label', 'Open menu');
   }
   hamburger.addEventListener('click', () => {
     const isExpanded = hamburger.getAttribute('aria-expanded') === 'true';
     if (isExpanded) {
       closeMenuDropdown();
     } else {
-      menuDropdown.style.display = 'block';
+      menuDropdown.hidden = false;
       hamburger.setAttribute('aria-expanded', 'true');
+      hamburger.setAttribute('aria-label', 'Close menu');
       (menuDropdown.querySelector('.menu-item')).focus();
     }
   });
@@ -496,8 +644,12 @@ document.addEventListener('DOMContentLoaded', () => {
   
   aboutMenu.addEventListener('click', () => {
     closeMenuDropdown();
-    showModal('About', "Inspired by Ho'oponopono & The Pitt. <br><br> Press a button to display a dot on the map. \
-      Location is converted to an approximate 4-character geohash. No personal identifiers are stored or shared.");
+    showModal(
+      'About',
+      "Inspired by Ho'oponopono & The Pitt.\n\nPress a button to display a dot on the map. " +
+      "Location is converted to an approximate 4-character geohash. " +
+      "New map records contain no account or device identifier.",
+    );
   });
 
   document.addEventListener('keydown', e => {
@@ -505,20 +657,23 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function showModal(title, message) {
-    const modal = document.getElementById('modal');
     const modalTitle = document.getElementById('modalTitle');
     const modalMessage = document.getElementById('modalMessage');
     if (modal && modalTitle && modalMessage) {
+      elementBeforeModal = document.activeElement;
       modalTitle.textContent = title;
-      modalMessage.innerHTML = message;
+      modalMessage.textContent = message;
       modal.classList.add('visible');
+      modal.setAttribute('aria-hidden', 'false');
+      announceStatus(`${title}: ${message}`);
+      window.requestAnimationFrame(() => modalClose.focus());
     }
   }
 
   function handleGeolocationError(error) {
     switch(error.code) {
       case error.PERMISSION_DENIED:
-        showModal('Location Blocked', "Your browser has blocked location access.<br><br>To display your dot on the map, please enable location in your browser or system settings.");
+        showModal('Location Blocked', "Your browser has blocked location access.\n\nTo display your dot on the map, please enable location in your browser or system settings.");
         break;
       case error.POSITION_UNAVAILABLE:
         showModal('Location Unavailable', "Your location could not be determined. Please ensure location services are enabled and you have a clear signal.");
@@ -533,9 +688,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function showFirebaseError(error, context) {
-    const userMessage = "An unexpected error occurred. Our team will work on a fix. Please try again later.";
+    const userMessage = "The message could not be sent. Please wait a moment and try again.";
     showModal('Error', userMessage);
     console.error(`Firebase Error (${context}):`, error);
   }
+
+  applyTheme(document.documentElement.getAttribute("data-theme") || "light");
 
 });

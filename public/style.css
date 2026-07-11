@@ -11,6 +11,9 @@ html, body {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
+[hidden] {
+  display: none !important;
+}
 *, *::before, *::after {
   box-sizing: inherit;
 }
@@ -53,9 +56,9 @@ html, body {
 }
 .buttons {
   position: absolute;
-  bottom: 20px;
-  left: 20px;
-  right: 20px;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: max(20px, env(safe-area-inset-left));
+  right: max(20px, env(safe-area-inset-right));
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -64,6 +67,7 @@ html, body {
 }
 .buttons button {
   width: 150px;
+  min-height: 44px;
   position: relative; /* Needed for loader positioning */
   display: flex;
   justify-content: center;
@@ -73,6 +77,22 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.cap-notice {
+  position: absolute;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background-color: var(--button-bg);
+  color: var(--text);
+  font-size: 14px;
+  text-align: center;
+  max-width: min(90vw, 420px);
 }
 
 #hereForYouContainer {
@@ -174,7 +194,13 @@ button, .menu-item {
   font-weight: 500;
   text-shadow: none; 
 }
-button:hover, .menu-item:hover { transform: translateY(-2px); }
+@media (hover: hover) {
+  button:hover, .menu-item:hover { transform: translateY(-2px); }
+}
+button:focus-visible, .menu-item:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 3px;
+}
 button:disabled { 
   cursor: not-allowed; 
   opacity: 0.7; 
@@ -258,7 +284,7 @@ button.loading .button-text {
   z-index: 1000;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.3s, visibility 0.3s;
+  transition: opacity 0.3s;
 }
 .modal-overlay.visible {
   opacity: 1;
@@ -276,6 +302,7 @@ button.loading .button-text {
 }
 .modal-content h3 { margin-top: 0; }
 .modal-content p { margin: 0 0 20px 0; line-height: 1.6; }
+.modal-content p { white-space: pre-line; }
 .modal-content button { padding: 10px 25px; }
 
 .hamburger {
@@ -313,11 +340,10 @@ button.loading .button-text {
   min-width: 160px;
   padding: 8px 0;
   z-index: 30;
-  display: none;
+  display: flex;
   flex-direction: column;
   transition: opacity 0.2s;
 }
-.menu-dropdown.visible { display: flex; }
 .menu-item {
   padding: 12px 20px;
   background: none;
@@ -328,4 +354,25 @@ button.loading .button-text {
   transition: background 0.2s;
   box-shadow: none;
   border: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

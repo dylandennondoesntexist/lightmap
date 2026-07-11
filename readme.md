@@ -1,141 +1,145 @@
-# **Minimalist Connection Map**
+# Lightmap
 
-A web application inspired by the principles of Ho'oponopono and The Pitt, designed to foster a sense of connection through simple, anonymous interactions on a global map. Users can send ephemeral messages ("I love you," "Thank you," etc.) that appear as temporary dots on a world map, or a single "Here for you" message that leaves a permanent mark for the day.
+[Lightmap](https://hereforyoumap.com) is a minimalist real-time connection map.
+People can place one of four brief sentiments on an approximate part of the
+world map. After using all four, they can leave a small “Here for you” dot for
+the next 24 hours.
 
-## **Features**
+The project is inspired by Ho'oponopono and *The Pitt*. Its purpose is modest:
+to offer a quiet reminder that someone else is out there.
 
-* **Ephemeral Messages**: Send one of four predefined messages ("I love you," "Thank you," "I forgive you," "Please forgive me") that appear as a colored dot on a world map for a short duration.  
-* **"Here for you" Message**: After interacting with the ephemeral messages a few times, a special "Here for you" button unlocks, allowing you to place a single, permanent dot on the map for the current day (resets daily).  
-* **Real-time Updates**: See messages from other users appear on the map in real-time.  
-* **Geolocation-based**: Dots are placed based on your approximate geographic location (converted to a 6-character geohash for privacy). No personal identifiers are stored or shared.  
-* **Dark/Light Mode**: Toggle between light and dark themes for comfortable viewing.  
-* **Responsive Design**: Optimized for various screen sizes, including mobile and desktop.  
-* **Automated Data Cleanup**: Firebase Cloud Functions automatically remove old ephemeral messages to maintain database efficiency.
+## How it works
 
-## **Technologies Used**
+- The browser converts a location to a four-character geohash before sending
+  it. This locates a dot to a cell measuring tens of kilometres, not a precise
+  coordinate.
+- New public map records contain a geohash, timestamp, and display type/color.
+  They do not contain an account, device, or advertising identifier.
+- Firebase Anonymous Authentication controls database access. Realtime Database
+  rules validate direct client writes. Button cooldowns are user-experience
+  controls rather than a security boundary.
+- Ephemeral dots display for 10 seconds; “Here for you” dots display for 24
+  hours. An hourly Cloud Function deletes ephemeral records after one hour and
+  daily-dot records after 25 hours.
+- A global circuit breaker caps the site at 25,000 button presses per UTC day.
+  Each press writes its message and a shared counter increment in one atomic
+  database update, so the cap adds no extra network round trip. At the cap,
+  the buttons disappear and writes are rejected by the database rules until
+  the next UTC day; the map itself stays visible.
+- Listeners are bounded so one visitor downloads at most the displayable
+  dots: ephemeral messages are queried from the last few seconds only, and
+  daily dots are limited to the newest 2,000.
 
-* **Frontend**:  
-  * HTML5  
-  * CSS3  
-  * JavaScript (ES6+)  
-  * [D3.js](https://d3js.org/) for map rendering and animations  
-  * [TopoJSON](https://github.com/topojson/topojson) for geographic data  
-* **Backend**:  
-  * [Firebase Realtime Database](https://firebase.google.com/docs/database) for storing message data.  
-  * [Firebase Cloud Functions](https://firebase.google.com/docs/functions) for scheduled data cleanup.
+The client uses plain HTML, CSS, and JavaScript with D3, TopoJSON, and Firebase.
+There is no frontend build step.
 
-## **Getting Started**
+## Local setup
 
-Follow these instructions to set up and run the project locally.
+Requirements: Node.js 22+, npm, a Firebase project, and the Firebase CLI.
 
-### **Prerequisites**
+1. Clone the repository.
+2. Enable Anonymous Authentication and Realtime Database in Firebase.
+3. Copy `public/config.template.js` to `public/config.js` and fill in the web app
+   configuration from Firebase Console → Project settings.
+4. Set your Firebase project alias in `.firebaserc`.
+5. Install and verify the function dependencies:
 
-* Node.js (LTS version recommended)  
-* npm (Node Package Manager)  
-* A Firebase project  
-* Firebase CLI (npm install \-g firebase-tools)
+   ```sh
+   npm ci --prefix functions
+   npm run check
+   ```
 
-### **1\. Clone the Repository**
+6. Start local hosting:
 
-git clone https://github.com/your-username/your-repo-name.git  
-cd your-repo-name
+   ```sh
+   firebase emulators:start --only hosting
+   ```
 
-### **2\. Initialize Firebase**
+Opening `public/index.html` directly will not work reliably because browsers
+restrict JavaScript modules loaded from `file://` URLs.
 
-If you haven't already, log in to Firebase and initialize your project:
+To verify the database rules behavior (including the daily cap) against the
+Realtime Database emulator, which requires a Java runtime:
 
-firebase login  
-firebase init
+```sh
+npm run test:rules
+```
 
-During firebase init, select:
+## Daily write cap
 
-* **Features**: Firestore, Functions, Hosting  
-* **Project**: Select your existing Firebase project.  
-* **Firestore**: Use default rules and index files.  
-* **Functions**:  
-  * Language: JavaScript  
-  * ESLint: Yes  
-  * Install dependencies: Yes  
-* **Hosting**:  
-  * Public directory: . (or public if you prefer, but your current setup assumes . for index.html)  
-  * Configure as a single-page app: No (or Yes, if you plan to use client-side routing)  
-  * Set up automatic builds and deploys with GitHub: (Your preference)
+`database.rules.json` maintains a single counter at `stats/daily`
+(`{day, count}`). A message write is only valid when the same atomic update
+increments today's counter by exactly one, and the counter itself can only
+increment while below the cap, or reset to one on the first press of a new
+UTC day. The cap value lives in two places that must match: the `count`
+validation in `database.rules.json` and `DAILY_GLOBAL_CAP` in
+`public/main.js` (a unit test enforces this).
 
-### **3\. Configure Firebase Client SDK**
+The 25,000 value is derived from Realtime Database pricing ($1 per GB
+downloaded, $5 per GB-month stored, with no free allowance on the Blaze
+plan). Records are ~0.15 KB on the wire and hourly cleanup keeps storage
+negligible, so the dominant cost is realtime fan-out: presses × concurrent
+viewers × record size. A month of maximally scripted abuse against a quiet
+site stays around $1; a genuinely viral day is dominated instead by each
+visitor syncing the day's dots, which the query bounds above cap at roughly
+a quarter-megabyte per visit. Adjust the cap by changing the value in
+`database.rules.json` and `public/main.js` together.
 
-Create a config.js file in your project's root directory (next to index.html) with your Firebase project configuration. You can find this in your Firebase Console under Project settings \-\> General \-\> Your apps \-\> Web app \-\> Firebase SDK snippet (Config).
+Known limitations, accepted deliberately:
 
-// config.js  
-export const firebaseConfig \= {  
-  apiKey: "YOUR\_API\_KEY",  
-  authDomain: "YOUR\_PROJECT\_ID.firebaseapp.com",  
-  projectId: "YOUR\_PROJECT\_ID",  
-  storageBucket: "YOUR\_PROJECT\_ID.appspot.com",  
-  messagingSenderId: "YOUR\_MESSAGING\_SENDER\_ID",  
-  appId: "YOUR\_APP\_ID",  
-  databaseURL: "https://YOUR\_PROJECT\_ID-default-rtdb.firebaseio.com", // Ensure this is correct for Realtime Database  
-};
+- A crafted client can batch several messages against one counter increment
+  in a single multi-path update, so the cap is a circuit breaker against
+  runaway or scripted traffic, not an exact quota. Every batched record is
+  still fully validated, and App Check makes cheap scripting harder.
+- Anyone can spend counter slots without writing messages, so a determined
+  visitor could exhaust the day's cap early. That failure mode — a quiet map
+  for the rest of the UTC day — is the intended worst case.
 
-**Important**: Do not commit your config.js if it contains sensitive information. For this project, the firebaseConfig is generally public, but always double-check. Consider adding config.js to your .gitignore and providing a config\_template.js for others to copy.
+## Deployment
 
-### **4\. Install Functions Dependencies**
+Review `database.rules.json` for your project, then deploy the cleanup Function,
+Hosting assets, and Database Rules:
 
-Navigate into the functions directory and install its dependencies:
+```sh
+firebase deploy --only functions
+firebase deploy --only hosting
+firebase deploy --only database
+```
 
-cd functions  
-npm install  
-cd .. \# Go back to the root directory
+Deploy Hosting and Database Rules back to back: clients served before the
+rules land cannot write the daily counter, and clients cached from before
+this version cannot satisfy the new rules until they refresh. At low traffic
+this brief window is harmless, but it is worth knowing about.
 
-### **5\. Deploy Firebase Rules and Functions**
+The Hosting configuration publishes only `public/`; source, tests, functions,
+and local tooling are not served as website assets. It also adds a restrictive
+Content Security Policy and related browser security headers.
 
-Ensure your firebase.json has the correct configurations for your hosting and functions.
+Before promoting a public instance, register the web app with Firebase App
+Check using reCAPTCHA Enterprise, add the public site key as `appCheckSiteKey`
+in `public/config.js`, monitor App Check metrics, and then enforce App Check for
+Realtime Database in the console. App Check is the primary additional control
+against inexpensive scripted writes from outside the web app.
 
-Deploy your Firebase Realtime Database rules and Cloud Functions:
+## Repository status
 
-firebase deploy \--only database,functions
+The web app is maintained and covered by lightweight unit, configuration,
+function, lint, and dependency checks in GitHub Actions.
 
-### **6\. Run Locally (Optional)**
+## Privacy and limitations
 
-You can serve your web application locally:
+A four-character geohash is approximate, but it is still location-derived data.
+Do not describe it as fully anonymous in a formal privacy or legal sense.
+Operators should disclose their Firebase processing and retention practices and
+monitor usage, billing, Authentication quotas, and cleanup failures.
 
-firebase emulators:start
+Firebase client configuration is normally public by design. Authorization comes
+from Database Rules, IAM, and App Check—not from hiding `apiKey`. Never commit
+Admin SDK keys or service-account files.
 
-This will provide local URLs for your hosting and functions.
+## Contributing and security
 
-## **Project Structure**
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and
+[SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
-.  
-├── .firebaserc             \# Firebase project aliases  
-├── .gitignore              \# Git ignore for the root directory  
-├── config\_template.js      \# Template for Firebase client configuration  
-├── config.js               \# Your actual Firebase client configuration (KEEP PRIVATE IF SENSITIVE)  
-├── favicon.png             \# Website favicon  
-├── firebase.json           \# Firebase project configuration (hosting, functions, rules)  
-├── functions/              \# Firebase Cloud Functions directory  
-│   ├── .eslintrc.js        \# ESLint configuration for functions  
-│   ├── .gitignore          \# Git ignore for functions (node\_modules, local files)  
-│   ├── index.js            \# Cloud Functions code (cleanup logic)  
-│   ├── package-lock.json   \# Exact dependency versions for functions  
-│   └── package.json        \# Functions dependencies and scripts  
-├── index.html              \# Main HTML file for the web application  
-├── main.js                 \# Main JavaScript logic for the client-side  
-└── style.css               \# CSS styles for the web application
-
-## **Contributing**
-
-Contributions are welcome\! If you'd like to contribute, please fork the repository and create a pull request.
-
-1. Fork the repository.  
-2. Create a new branch (git checkout \-b feature/your-feature-name).  
-3. Make your changes.  
-4. Commit your changes (git commit \-m 'Add new feature').  
-5. Push to the branch (git push origin feature/your-feature-name).  
-6. Create a new Pull Request.
-
-Please ensure your code adheres to the existing style and that all tests pass.
-
-## **License**
-
-This project is licensed under the MIT License \- see the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
-
-**Note**: This project is for demonstration and learning purposes. While efforts are made to ensure privacy (geohashing, no personal identifiers), always exercise caution when dealing with user data and consider all security implications for production applications.
+Licensed under the [MIT License](LICENSE).

@@ -1,0 +1,62 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "stats": {
+      "daily": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['day', 'count'])",
+        "day": {
+          ".validate": "newData.isNumber() && newData.val() == (now - (now % 86400000)) && ((data.exists() && newData.val() == data.val()) || newData.parent().child('count').val() == 1)"
+        },
+        "count": {
+          ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 25000 && ((data.exists() && newData.val() == data.val() + 1 && newData.parent().child('day').val() == (now - (now % 86400000))) || (newData.val() == 1 && (!data.parent().child('day').exists() || data.parent().child('day').val() != (now - (now % 86400000)))))"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "messages": {
+      ".read": "auth != null",
+      ".indexOn": ["timestamp"],
+      "$messageId": {
+        ".write": "auth != null && !data.exists()",
+        ".validate": "newData.hasChildren(['geohash', 'color', 'timestamp']) && newData.parent().parent().child('stats/daily/day').val() == (now - (now % 86400000)) && ((root.child('stats/daily/day').val() == (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == root.child('stats/daily/count').val() + 1) || (root.child('stats/daily/day').val() != (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == 1))",
+        "geohash": {
+          ".validate": "newData.isString() && newData.val().matches(/^[0123456789bcdefghjkmnpqrstuvwxyz]{4}$/)"
+        },
+        "color": {
+          ".validate": "newData.isString() && (newData.val() == '#AA4499' || newData.val() == '#EEAA77' || newData.val() == '#44AA99' || newData.val() == '#332288')"
+        },
+        "timestamp": {
+          ".validate": "newData.isNumber() && newData.val() == now"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "permanent_messages": {
+      ".read": "auth != null",
+      ".indexOn": ["timestamp"],
+      "$messageId": {
+        ".write": "auth != null && !data.exists()",
+        ".validate": "newData.hasChildren(['geohash', 'timestamp', 'type']) && newData.parent().parent().child('stats/daily/day').val() == (now - (now % 86400000)) && ((root.child('stats/daily/day').val() == (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == root.child('stats/daily/count').val() + 1) || (root.child('stats/daily/day').val() != (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == 1))",
+        "geohash": {
+          ".validate": "newData.isString() && newData.val().matches(/^[0123456789bcdefghjkmnpqrstuvwxyz]{4}$/)"
+        },
+        "timestamp": {
+          ".validate": "newData.isNumber() && newData.val() == now"
+        },
+        "type": {
+          ".validate": "newData.val() == 'permanent'"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    }
+  }
+}
