@@ -35,31 +35,34 @@ There is no frontend build step.
 
 ## Local setup
 
-Requirements: Node.js 22+, npm, a Firebase project, and the Firebase CLI.
+Requirements: Node.js 22+, npm, Java, and a Firebase project.
 
 1. Clone the repository.
 2. Enable Anonymous Authentication and Realtime Database in Firebase.
 3. Copy `public/config.template.js` to `public/config.js` and fill in the web app
    configuration from Firebase Console → Project settings.
 4. Set your Firebase project alias in `.firebaserc`.
-5. Install and verify the function dependencies:
+5. Install the pinned Firebase CLI and function dependencies, then verify the
+   project:
 
    ```sh
+   npm ci
    npm ci --prefix functions
    npm run check
+   npm run test:rules
    ```
 
 6. Start local hosting:
 
    ```sh
-   firebase emulators:start --only hosting
+   npm run firebase -- emulators:start --only hosting
    ```
 
 Opening `public/index.html` directly will not work reliably because browsers
 restrict JavaScript modules loaded from `file://` URLs.
 
-To verify the database rules behavior (including the daily cap) against the
-Realtime Database emulator, which requires a Java runtime:
+To rerun only the database rules behavior tests (including the daily cap)
+against the Realtime Database emulator:
 
 ```sh
 npm run test:rules
@@ -68,12 +71,15 @@ npm run test:rules
 ## Daily write cap
 
 `database.rules.json` maintains a single counter at `stats/daily`
-(`{day, count}`). A message write is only valid when the same atomic update
-increments today's counter by exactly one, and the counter itself can only
-increment while below the cap, or reset to one on the first press of a new
-UTC day. The cap value lives in two places that must match: the `count`
-validation in `database.rules.json` and `DAILY_GLOBAL_CAP` in
-`public/main.js` (a unit test enforces this).
+(`{day, count, messageId, messagePath}`). A message write is only valid when
+the same atomic update increments today's counter by exactly one and names
+that exact newly created record. This one-to-one correlation prevents a
+crafted batch from sharing a counter slot across several records, prevents
+counter-only writes, and prevents clients from deleting the counter. The
+counter can reset to one only on the first press of a new UTC day. The cap
+value lives in two places that must match: the `count` validation in
+`database.rules.json` and `DAILY_GLOBAL_CAP` in `public/main.js` (a unit test
+enforces this).
 
 The 25,000 value is derived from Realtime Database pricing ($1 per GB
 downloaded, $5 per GB-month stored, with no free allowance on the Blaze
@@ -85,25 +91,15 @@ visitor syncing the day's dots, which the query bounds above cap at roughly
 a quarter-megabyte per visit. Adjust the cap by changing the value in
 `database.rules.json` and `public/main.js` together.
 
-Known limitations, accepted deliberately:
-
-- A crafted client can batch several messages against one counter increment
-  in a single multi-path update, so the cap is a circuit breaker against
-  runaway or scripted traffic, not an exact quota. Every batched record is
-  still fully validated, and App Check makes cheap scripting harder.
-- Anyone can spend counter slots without writing messages, so a determined
-  visitor could exhaust the day's cap early. That failure mode — a quiet map
-  for the rest of the UTC day — is the intended worst case.
-
 ## Deployment
 
 Review `database.rules.json` for your project, then deploy the cleanup Function,
 Hosting assets, and Database Rules:
 
 ```sh
-firebase deploy --only functions
-firebase deploy --only hosting
-firebase deploy --only database
+npm run firebase -- deploy --only functions
+npm run firebase -- deploy --only hosting
+npm run firebase -- deploy --only database
 ```
 
 Deploy Hosting and Database Rules back to back: clients served before the

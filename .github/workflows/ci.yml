@@ -17,7 +17,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: functions/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+      - run: npm ci
       - run: npm ci --prefix functions
       - run: npm run check
+      - run: npm run test:rules
+      - run: npm audit --omit=optional --audit-level=high
       - run: npm audit --prefix functions --omit=dev --omit=optional --audit-level=high

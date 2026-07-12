@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "firebase": "firebase",
     "test": "node --test tests/*.test.js",
     "test:rules": "firebase emulators:exec --only database \"node tests/rules.emulator.mjs\"",
     "lint:functions": "npm --prefix functions run lint",
@@ -12,5 +13,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "firebase-tools": "15.22.4"
   }
 }

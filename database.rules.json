@@ -5,13 +5,19 @@
     "stats": {
       "daily": {
         ".read": "auth != null",
-        ".write": "auth != null",
-        ".validate": "newData.hasChildren(['day', 'count'])",
+        ".write": "auth != null && newData.exists()",
+        ".validate": "newData.hasChildren(['day', 'count', 'messageId', 'messagePath']) && newData.child('messageId').isString() && newData.child('messagePath').isString() && ((newData.child('messagePath').val() == 'messages' && newData.parent().parent().child('messages').child(newData.child('messageId').val()).exists() && !root.child('messages').child(newData.child('messageId').val()).exists()) || (newData.child('messagePath').val() == 'permanent_messages' && newData.parent().parent().child('permanent_messages').child(newData.child('messageId').val()).exists() && !root.child('permanent_messages').child(newData.child('messageId').val()).exists()))",
         "day": {
           ".validate": "newData.isNumber() && newData.val() == (now - (now % 86400000)) && ((data.exists() && newData.val() == data.val()) || newData.parent().child('count').val() == 1)"
         },
         "count": {
           ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 25000 && ((data.exists() && newData.val() == data.val() + 1 && newData.parent().child('day').val() == (now - (now % 86400000))) || (newData.val() == 1 && (!data.parent().child('day').exists() || data.parent().child('day').val() != (now - (now % 86400000)))))"
+        },
+        "messageId": {
+          ".validate": "newData.isString()"
+        },
+        "messagePath": {
+          ".validate": "newData.isString() && (newData.val() == 'messages' || newData.val() == 'permanent_messages')"
         },
         "$other": {
           ".validate": false
@@ -23,7 +29,7 @@
       ".indexOn": ["timestamp"],
       "$messageId": {
         ".write": "auth != null && !data.exists()",
-        ".validate": "newData.hasChildren(['geohash', 'color', 'timestamp']) && newData.parent().parent().child('stats/daily/day').val() == (now - (now % 86400000)) && ((root.child('stats/daily/day').val() == (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == root.child('stats/daily/count').val() + 1) || (root.child('stats/daily/day').val() != (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == 1))",
+        ".validate": "newData.hasChildren(['geohash', 'color', 'timestamp']) && newData.parent().parent().child('stats/daily/messagePath').val() == 'messages' && newData.parent().parent().child('stats/daily/messageId').val() == $messageId && newData.parent().parent().child('stats/daily/day').val() == (now - (now % 86400000)) && ((root.child('stats/daily/day').val() == (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == root.child('stats/daily/count').val() + 1) || (root.child('stats/daily/day').val() != (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == 1))",
         "geohash": {
           ".validate": "newData.isString() && newData.val().matches(/^[0123456789bcdefghjkmnpqrstuvwxyz]{4}$/)"
         },
@@ -43,7 +49,7 @@
       ".indexOn": ["timestamp"],
       "$messageId": {
         ".write": "auth != null && !data.exists()",
-        ".validate": "newData.hasChildren(['geohash', 'timestamp', 'type']) && newData.parent().parent().child('stats/daily/day').val() == (now - (now % 86400000)) && ((root.child('stats/daily/day').val() == (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == root.child('stats/daily/count').val() + 1) || (root.child('stats/daily/day').val() != (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == 1))",
+        ".validate": "newData.hasChildren(['geohash', 'timestamp', 'type']) && newData.parent().parent().child('stats/daily/messagePath').val() == 'permanent_messages' && newData.parent().parent().child('stats/daily/messageId').val() == $messageId && newData.parent().parent().child('stats/daily/day').val() == (now - (now % 86400000)) && ((root.child('stats/daily/day').val() == (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == root.child('stats/daily/count').val() + 1) || (root.child('stats/daily/day').val() != (now - (now % 86400000)) && newData.parent().parent().child('stats/daily/count').val() == 1))",
         "geohash": {
           ".validate": "newData.isString() && newData.val().matches(/^[0123456789bcdefghjkmnpqrstuvwxyz]{4}$/)"
         },

@@ -94,13 +94,17 @@ let keyCounter = 0;
 const newKey = () => `test-message-${keyCounter++}`;
 
 // A press is one atomic multi-path update: the message plus the counter.
+function countedUpdate(statsWrite, messagePath = "messages", body = message(), messageId = newKey()) {
+  return {
+    [`${messagePath}/${messageId}`]: body,
+    "stats/daily": {...statsWrite, messageId, messagePath},
+  };
+}
+
 function press(statsWrite, messagePath = "messages", body = message()) {
   return request("PATCH", "/", {
     auth: true,
-    body: {
-      [`${messagePath}/${newKey()}`]: body,
-      "stats/daily": statsWrite,
-    },
+    body: countedUpdate(statsWrite, messagePath, body),
   });
 }
 
@@ -120,7 +124,7 @@ await expectAllowed("authenticated read of stats/daily",
 
 // --- basic write coupling ---
 await expectDenied("unauthenticated press",
-  request("PATCH", "/", {body: {[`messages/${newKey()}`]: message(), "stats/daily": resetWrite}}));
+  request("PATCH", "/", {body: countedUpdate(resetWrite)}));
 await expectDenied("message without the counter in the same update",
   request("PUT", `/messages/${newKey()}`, {auth: true, body: message()}));
 await expectAllowed("first press of the day (counter reset to 1)",
@@ -129,7 +133,10 @@ await expectAllowed("second press of the day (increment by 1)",
   press(incrementWrite));
 
 let stats = (await adminGet("/stats/daily")).payload;
-assert.deepEqual(stats, {day: today, count: 2}, "counter should be 2 after two presses");
+assert.equal(stats.day, today, "counter should use today's UTC day");
+assert.equal(stats.count, 2, "counter should be 2 after two presses");
+assert.equal(stats.messagePath, "messages", "counter should identify the submitted collection");
+assert.equal(typeof stats.messageId, "string", "counter should identify the submitted message");
 
 await expectDenied("press with a stale counter day",
   press({day: yesterday, count: INCREMENT_ONE}));
@@ -178,22 +185,62 @@ await expectDenied("resetting today's counter to 1",
   request("PUT", "/stats/daily", {auth: true, body: {day: today, count: 1}}));
 await expectDenied("adding an extra field to the counter",
   request("PUT", "/stats/daily", {auth: true, body: {day: today, count: 6, note: "x"}}));
-await expectAllowed("burning one counter slot without a message (accepted cost)",
-  request("PUT", "/stats/daily", {auth: true, body: {day: today, count: INCREMENT_ONE}}));
+await expectDenied("burning one counter slot without a message",
+  request("PUT", "/stats/daily", {
+    auth: true,
+    body: {day: today, count: INCREMENT_ONE, messageId: newKey(), messagePath: "messages"},
+  }));
+await expectDenied("deleting the daily counter",
+  request("DELETE", "/stats/daily", {auth: true}));
 
 await adminPut("/stats/daily", {day: yesterday, count: 9800});
 await expectDenied("carrying yesterday's count into today by rewriting only the day",
   request("PATCH", "/stats/daily", {auth: true, body: {day: today}}));
 
-// --- known limitation, pinned so a future change is noticed ---
+// --- one counter slot authorizes exactly one correlated message ---
 await adminPut("/stats/daily", {day: today, count: 5});
-await expectAllowed("KNOWN LIMIT: crafted batch shares one counter slot across two messages",
+const firstBatchId = newKey();
+const secondBatchId = newKey();
+await expectDenied("crafted batch cannot share one counter slot across two messages",
   request("PATCH", "/", {
     auth: true,
     body: {
-      [`messages/${newKey()}`]: message(),
-      [`messages/${newKey()}`]: message(),
-      "stats/daily": incrementWrite,
+      [`messages/${firstBatchId}`]: message(),
+      [`messages/${secondBatchId}`]: message(),
+      "stats/daily": {
+        ...incrementWrite,
+        messageId: firstBatchId,
+        messagePath: "messages",
+      },
+    },
+  }));
+
+const sharedId = newKey();
+await expectDenied("one counter slot cannot authorize both message collections",
+  request("PATCH", "/", {
+    auth: true,
+    body: {
+      [`messages/${sharedId}`]: message(),
+      [`permanent_messages/${sharedId}`]: permanentMessage(),
+      "stats/daily": {
+        ...incrementWrite,
+        messageId: sharedId,
+        messagePath: "messages",
+      },
+    },
+  }));
+
+const actualId = newKey();
+await expectDenied("counter metadata must identify the message being created",
+  request("PATCH", "/", {
+    auth: true,
+    body: {
+      [`messages/${actualId}`]: message(),
+      "stats/daily": {
+        ...incrementWrite,
+        messageId: newKey(),
+        messagePath: "messages",
+      },
     },
   }));
 

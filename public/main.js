@@ -132,32 +132,50 @@ document.addEventListener('DOMContentLoaded', () => {
     showModal('Resting', "Today's messages have all been shared. The map will accept new ones after midnight UTC.");
   }
 
-  function buildCounterWrite() {
+  function buildCounterWrite(messageId, messagePath) {
     const todayMs = utcDayStart(serverNow());
     if (latestDailyStats && latestDailyStats.day === todayMs) {
-      return { day: todayMs, count: increment(1) };
+      return { day: todayMs, count: increment(1), messageId, messagePath };
     }
-    return { day: todayMs, count: 1 };
+    return { day: todayMs, count: 1, messageId, messagePath };
   }
 
   // Writes the message and the counter in a single atomic multi-path update,
-  // so a press is still one network round trip. A denial is retried once with
-  // a fresh counter read, which covers UTC-rollover and cap races.
+  // so a press is still one network round trip. The message key is allocated
+  // once so a retry cannot create a duplicate. A permission denial is retried
+  // only when a fresh read shows that our cached counter was stale.
   async function sendCountedMessage(path, messageData) {
+    const messageId = push(ref(db, path)).key;
+    const attemptedDay = latestDailyStats?.day;
+    const attemptedCount = latestDailyStats?.count;
     const write = () => update(ref(db), {
-      [`${path}/${push(ref(db, path)).key}`]: messageData,
-      'stats/daily': buildCounterWrite(),
+      [`${path}/${messageId}`]: messageData,
+      'stats/daily': buildCounterWrite(messageId, path),
     });
 
     try {
       await write();
-    } catch {
-      latestDailyStats = (await get(statsRef)).val();
+    } catch (error) {
+      if (error?.code !== 'PERMISSION_DENIED') {
+        throw error;
+      }
+
+      const refreshedStats = (await get(statsRef)).val();
+      latestDailyStats = refreshedStats;
       updateCapUi();
+
+      // If the server committed the first attempt but its acknowledgement was
+      // lost, the correlation fields make that success detectable.
+      if (refreshedStats?.messageId === messageId && refreshedStats?.messagePath === path) {
+        return;
+      }
       if (isCapReached()) {
         const capError = new Error('The daily message cap has been reached.');
         capError.code = 'daily-cap';
         throw capError;
+      }
+      if (refreshedStats?.day === attemptedDay && refreshedStats?.count === attemptedCount) {
+        throw error;
       }
       await write();
     }
@@ -648,7 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
       'About',
       "Inspired by Ho'oponopono & The Pitt.\n\nPress a button to display a dot on the map. " +
       "Location is converted to an approximate 4-character geohash. " +
-      "New map records contain no account or device identifier.",
+      "Map records contain no account or device identifier.",
     );
   });
 

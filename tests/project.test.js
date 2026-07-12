@@ -23,6 +23,23 @@ test("the config template includes the optional App Check hook", async () => {
   assert.match(template, /export const appCheckSiteKey/);
 });
 
+test("counted client writes use one stable, correlated message ID", async () => {
+  const main = await readFile("public/main.js", "utf8");
+  const start = main.indexOf("async function sendCountedMessage");
+  const end = main.indexOf("// --- D3 Map Setup ---", start);
+  const sendCountedMessage = main.slice(start, end);
+
+  assert.notEqual(start, -1);
+  assert.match(main, /function buildCounterWrite\(messageId, messagePath\)/);
+  assert.equal(
+    [...sendCountedMessage.matchAll(/push\(ref\(db, path\)\)/g)].length,
+    1,
+    "a retry must not allocate another message ID",
+  );
+  assert.match(sendCountedMessage, /buildCounterWrite\(messageId, path\)/);
+  assert.match(sendCountedMessage, /error\?\.code !== 'PERMISSION_DENIED'/);
+});
+
 test("the CSP permits every external origin the client contacts", async () => {
   const firebase = JSON.parse(await readFile("firebase.json", "utf8"));
   const csp = firebase.hosting.headers[0].headers
