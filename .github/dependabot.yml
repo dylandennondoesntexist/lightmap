@@ -18,12 +18,6 @@ updates:
           - firebase-*
       development:
         dependency-type: development
-    ignore:
-      # firebase-functions 7.x declares a peer dependency on firebase-admin
-      # ^11 || ^12 || ^13, so the admin 14 major cannot install under npm ci.
-      # Remove this once firebase-functions accepts firebase-admin 14.
-      - dependency-name: firebase-admin
-        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
