@@ -14,6 +14,46 @@ html, body {
 [hidden] {
   display: none !important;
 }
+.initial-loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text);
+  z-index: 9999;
+  padding: 20px;
+}
+[data-theme="dark"] .initial-loading {
+  background: rgba(18, 18, 18, 0.96);
+}
+.initial-loading__panel {
+  background: var(--modal-bg);
+  color: var(--text);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+  text-align: center;
+  max-width: min(90vw, 340px);
+}
+.initial-loading__logo {
+  width: min(180px, 70vw);
+  height: auto;
+  display: block;
+  margin: 0 auto 20px;
+  /* The logo ring is painted with currentColor so it stays legible in both
+     themes; the coloured dots keep their own fills. */
+  color: var(--text);
+}
+.initial-loading__text {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.initial-loading--hidden {
+  display: none !important;
+}
 *, *::before, *::after {
   box-sizing: inherit;
 }

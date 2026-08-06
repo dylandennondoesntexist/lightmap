@@ -117,6 +117,10 @@ in `public/config.js`, monitor App Check metrics, and then enforce App Check for
 Realtime Database in the console. App Check is the primary additional control
 against inexpensive scripted writes from outside the web app.
 
+For testing, use the Firebase Emulator Suite or a non-production preview/staging
+channel first. Only enable App Check enforcement in production after the app has
+been verified to work with anonymous auth and the intended Firebase rules.
+
 ## Repository status
 
 The web app is maintained and covered by lightweight unit, configuration,

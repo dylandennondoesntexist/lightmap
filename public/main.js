@@ -22,6 +22,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const status = document.getElementById('status');
   let elementBeforeModal = null;
 
+  // --- Initial loading splash ---
+  // The splash covers the UI until sign-in and the map data have both settled,
+  // because the buttons stay disabled until then. Every failure path also
+  // uncovers the page, and theme.js holds a last-resort timer for the case
+  // where this module never runs at all.
+  const initialLoading = document.getElementById('initialLoading');
+  let authReady = false;
+  let mapLoaded = false;
+
+  function hideAppLoading() {
+    initialLoading?.classList.add('initial-loading--hidden');
+  }
+
+  function updateAppReady() {
+    if (authReady && mapLoaded) {
+      hideAppLoading();
+    }
+  }
+
   // --- Configuration Constants ---
   const CONFIG = {
     DOT_LIFESPAN: 10000,
@@ -560,6 +579,10 @@ document.addEventListener('DOMContentLoaded', () => {
         button.disabled = false;
       });
       checkIfUnlocked();
+      if (!authReady) {
+        authReady = true;
+        updateAppReady();
+      }
     } else {
       currentUser = null;
       document.querySelectorAll('.buttons button').forEach(button => {
@@ -571,6 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
   signInAnonymously(auth).catch((error) => {
     console.error("Anonymous sign-in failed:", error);
     showModal('Connection Error', 'Could not connect to the service. Please refresh the page.');
+    authReady = true;
   });
 
 
@@ -585,8 +609,10 @@ document.addEventListener('DOMContentLoaded', () => {
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json").then(geoData => {
     worldData = topojson.feature(geoData, geoData.objects.countries);
     setupAndRenderMap();
+    mapLoaded = true;
     checkAndResetDailyData();
     checkIfUnlocked();
+    updateAppReady();
   }).catch(err => {
     console.error("Could not load map data:", err);
     showModal('Error', "Could not load map data. Please refresh the page.");
@@ -677,6 +703,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function showModal(title, message) {
     const modalTitle = document.getElementById('modalTitle');
     const modalMessage = document.getElementById('modalMessage');
+    // The splash stacks above the modal, so a startup failure would otherwise
+    // report itself behind an opaque "Loading…" panel.
+    hideAppLoading();
     if (modal && modalTitle && modalMessage) {
       elementBeforeModal = document.activeElement;
       modalTitle.textContent = title;

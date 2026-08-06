@@ -7,7 +7,14 @@
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)" />
   <title>Here For You — a minimalist connection map</title>
+  <meta property="og:title" content="Here For You — a minimalist connection map" />
+  <meta property="og:description" content="Share a small, anonymous sign of connection on a real-time world map." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://hereforyoumap.com/" />
+  <meta property="og:image" content="https://hereforyoumap.com/hereforyoumaplogo.png" />
+  <meta name="twitter:card" content="summary" />
   <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="apple-touch-icon" href="hereforyoumaplogo.png" />
   <script src="theme.js"></script>
   <link rel="stylesheet" href="style.css">
 
@@ -26,6 +33,24 @@
   </button>
   <div class="menu-dropdown" id="menuDropdown" role="menu" aria-label="Main menu" hidden>
     <button class="menu-item" id="aboutMenu" role="menuitem" tabindex="-1">About</button>
+  </div>
+  <!-- Shown until anonymous auth and the map data have both settled, so the
+       buttons are never visible while they are still disabled. Inlined rather
+       than linked so the first paint costs no extra request, and so the ring
+       can follow the theme via currentColor. -->
+  <div id="initialLoading" class="initial-loading" role="status">
+    <div class="initial-loading__panel">
+      <svg class="initial-loading__logo" viewBox="0 0 1320 1320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Here For You logo">
+        <g transform="translate(-1525 -562)">
+          <path d="M1525 1222C1525 857.492 1820.49 562 2185 562 2549.51 562 2845 857.492 2845 1222 2845 1586.51 2549.51 1882 2185 1882 1820.49 1882 1525 1586.51 1525 1222Z" fill="currentColor" fill-rule="evenodd"/>
+          <path d="M1756 979.5C1756 874.842 1840.84 790 1945.5 790 2050.16 790 2135 874.842 2135 979.5 2135 1084.16 2050.16 1169 1945.5 1169 1840.84 1169 1756 1084.16 1756 979.5Z" fill="#AA4499" fill-rule="evenodd"/>
+          <path d="M2235 979.5C2235 874.842 2319.84 790 2424.5 790 2529.16 790 2614 874.842 2614 979.5 2614 1084.16 2529.16 1169 2424.5 1169 2319.84 1169 2235 1084.16 2235 979.5Z" fill="#EEAA77" fill-rule="evenodd"/>
+          <path d="M2235 1465C2235 1360.07 2319.84 1275 2424.5 1275 2529.16 1275 2614 1360.07 2614 1465 2614 1569.93 2529.16 1655 2424.5 1655 2319.84 1655 2235 1569.93 2235 1465Z" fill="#332288" fill-rule="evenodd"/>
+          <path d="M1756 1465C1756 1360.07 1840.84 1275 1945.5 1275 2050.16 1275 2135 1360.07 2135 1465 2135 1569.93 2050.16 1655 1945.5 1655 1840.84 1655 1756 1569.93 1756 1465Z" fill="#44AA99" fill-rule="evenodd"/>
+        </g>
+      </svg>
+      <p class="initial-loading__text">Loading…</p>
+    </div>
   </div>
   <!-- Button-group wrappers for flexible positioning -->
   <div class="buttons">
