@@ -14,42 +14,21 @@ html, body {
 [hidden] {
   display: none !important;
 }
+/* Opaque, so the disabled buttons underneath are not faintly visible. */
 .initial-loading {
   position: fixed;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--text);
+  background: var(--bg);
   z-index: 9999;
   padding: 20px;
 }
-[data-theme="dark"] .initial-loading {
-  background: rgba(18, 18, 18, 0.96);
-}
-.initial-loading__panel {
-  background: var(--modal-bg);
-  color: var(--text);
-  border-radius: 18px;
-  padding: 24px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
-  text-align: center;
-  max-width: min(90vw, 340px);
-}
 .initial-loading__logo {
-  width: min(180px, 70vw);
+  width: min(180px, 60vw);
   height: auto;
   display: block;
-  margin: 0 auto 20px;
-  /* The logo ring is painted with currentColor so it stays legible in both
-     themes; the coloured dots keep their own fills. */
-  color: var(--text);
-}
-.initial-loading__text {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
 }
 .initial-loading--hidden {
   display: none !important;
@@ -68,6 +47,10 @@ html, body {
   --modal-bg: #ffffff;
   --modal-shadow: rgba(0, 0, 0, 0.1);
   --permanent-dot-color: #000000;
+  /* The splash disc sits on --bg and reads as the logo's backdrop, the way
+     the source artwork does. Matching the background keeps the four dots as
+     the only thing on screen, like --land/--sea do for the map. */
+  --splash-disc: #ffffff;
 }
 [data-theme="dark"] {
   --bg: #121212;
@@ -79,6 +62,7 @@ html, body {
   --modal-bg: #2c2c2c;
   --modal-shadow: rgba(0, 0, 0, 0.5);
   --permanent-dot-color: #ffffff;
+  --splash-disc: #000000;
 }
 #map {
   height: 100%;
