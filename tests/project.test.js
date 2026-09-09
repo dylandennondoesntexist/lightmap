@@ -62,6 +62,16 @@ test("the map re-renders on resize", async () => {
   );
 });
 
+test("the header controls share one size and vertical inset", async () => {
+  const css = await readFile("public/style.css", "utf8");
+  const sharedRule = css.match(/\.hamburger,\s*#toggleTheme\s*\{([^}]*)\}/)?.[1];
+
+  assert.ok(sharedRule, "expected a shared hamburger/theme-toggle rule");
+  assert.match(sharedRule, /top:\s*max\(10px, env\(safe-area-inset-top\)\)/);
+  assert.match(sharedRule, /width:\s*40px/);
+  assert.match(sharedRule, /height:\s*40px/);
+});
+
 test("the config template includes the optional App Check hook", async () => {
   const template = await readFile("public/config.template.js", "utf8");
 
