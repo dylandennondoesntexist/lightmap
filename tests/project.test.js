@@ -92,12 +92,22 @@ test("the CSP permits every external origin the client contacts", async () => {
   const directives = csp.split(";").map((directive) => directive.trim());
   const connectSrc = directives.find((directive) => directive.startsWith("connect-src"));
   const scriptSrc = directives.find((directive) => directive.startsWith("script-src"));
+  const frameSrc = directives.find((directive) => directive.startsWith("frame-src"));
 
   // The world atlas is fetched (not script-loaded) from jsDelivr, so it needs
-  // connect-src as well; a miss here blanks the whole map.
+  // connect-src as well; a miss here blanks the whole map. Realtime Database
+  // falls back to script-and-iframe long polling when WebSockets are
+  // unavailable, which is common enough on mobile networks that both paths
+  // must be allowed alongside the Firebase Auth helper iframe.
   assert.match(connectSrc, /https:\/\/cdn\.jsdelivr\.net/);
   assert.match(connectSrc, /wss:\/\/\*\.firebaseio\.com/);
   assert.match(connectSrc, /https:\/\/\*\.googleapis\.com/);
   assert.match(scriptSrc, /https:\/\/cdn\.jsdelivr\.net/);
   assert.match(scriptSrc, /https:\/\/www\.gstatic\.com/);
+  assert.match(scriptSrc, /https:\/\/apis\.google\.com/);
+  assert.match(scriptSrc, /https:\/\/\*\.firebaseio\.com/);
+  assert.match(scriptSrc, /https:\/\/\*\.firebasedatabase\.app/);
+  assert.match(frameSrc, /https:\/\/lightmap-8f19d\.firebaseapp\.com/);
+  assert.match(frameSrc, /https:\/\/\*\.firebaseio\.com/);
+  assert.match(frameSrc, /https:\/\/\*\.firebasedatabase\.app/);
 });
